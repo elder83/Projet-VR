@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VR — Lettre qui défile</title>
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; background: #000; }
+    .overlay {
+      position: absolute; left: 10px; top: 10px; z-index: 10; color: #fff; font-family: Arial, Helvetica, sans-serif;
+      background: rgba(0,0,0,0.35); padding: 8px 12px; border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <strong>VR — Lettre qui défile</strong><br>
+    Cliquez sur <em>Enter VR</em> (icône casque en bas à droite).<br>
+    Cliquez la lettre pour la changer, ou tapez A–Z.
+  </div>
+
+  <a-scene background="color: #000000">
+    <a-entity id="cameraRig">
+      <a-entity camera look-controls position="0 1.6 0"></a-entity>
+    </a-entity>
+
+    <a-entity id="scrollText" position="4 1.6 -3"
+              text="value: A; align: center; color: #FFFFFF; width: 6; baseline: center; font: https://cdn.aframe.io/fonts/mozillavr.fnt"
+              class="clickable"
+              animation="property: position; to: -4 1.6 -3; dur: 6000; loop: true; easing: linear"></a-entity>
+
+    <a-entity id="scrollText2" position="8 1.6 -3"
+              text="value: A; align: center; color: #FFFFFF; width: 6; baseline: center; font: https://cdn.aframe.io/fonts/mozillavr.fnt"
+              animation="property: position; to: -8 1.6 -3; dur: 6000; loop: true; easing: linear; delay: 3000"></a-entity>
+
+    <a-entity light="type: ambient; intensity: 0.9"></a-entity>
+
+    <script>
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+      let index = 0;
+      function cycleLetter(entity){ index = (index + 1) % letters.length; entity.setAttribute('text','value',letters[index]); }
+      window.addEventListener('load',()=>{
+        const e1=document.getElementById('scrollText'), e2=document.getElementById('scrollText2');
+        e1.addEventListener('click',()=>cycleLetter(e1)); e2.addEventListener('click',()=>cycleLetter(e2));
+        window.addEventListener('keydown',ev=>{
+          const k=ev.key.toUpperCase(); if(/^[A-Z]$/.test(k)){ e1.setAttribute('text','value',k); e2.setAttribute('text','value',k); }
+        });
+      });
+    </script>
+  </a-scene>
+</body>
+</html>
