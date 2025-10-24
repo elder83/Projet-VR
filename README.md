@@ -1,11 +1,5 @@
-# VR Letter Scroll (GitHub Pages)
-
-Expérience WebVR utilisant A-Frame pour afficher une lettre qui défile.
-
-## Déploiement rapide sur GitHub Pages
-1. Crée un dépôt public sur GitHub (ex : vr-letter-scroll).
-2. Dépose `index.html` et ce `README.md` dedans.
-3. Active GitHub Pages : Settings → Pages → Branch: main → /(root) → Save.
-4. Ouvre l’URL : https://tonpseudo.github.io/vr-letter-scroll
-
-Compatible Meta Quest 3 (navigateur Oculus/Meta Browser).
+# VR — Protocole (Canvas v3 FIX)
+**Correctifs majeurs :**
+- Directions calculées **depuis la pose de départ** (plus de biais gauche/droite).
+- Lettre placée **toujours au même angle** (off_FOV) et à la **même distance** → **position fixe** par direction (plus de jitter).
+- 2 / 4 / 6 / 8 directions, micro fr‑FR, minuteur, compte à rebours, export CSV (avec `session_id` et `off_fov_deg`).

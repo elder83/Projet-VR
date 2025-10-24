@@ -3,51 +3,472 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VR — Lettre qui défile</title>
+  <title>VR — Protocole Lettres & Directions (Canvas, v3 FIX)</title>
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
   <style>
-    html, body { height: 100%; margin: 0; background: #000; }
-    .overlay {
-      position: absolute; left: 10px; top: 10px; z-index: 10; color: #fff; font-family: Arial, Helvetica, sans-serif;
-      background: rgba(0,0,0,0.35); padding: 8px 12px; border-radius: 6px;
-    }
+    html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,Segoe UI,Arial}
+    .overlay{position:absolute;left:10px;top:10px;z-index:10;background:rgba(0,0,0,.45);
+      padding:10px 12px;border-radius:10px;backdrop-filter: blur(2px);max-width:min(96vw,1100px)}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .btn{border:1px solid #5aa7ff;background:rgba(40,80,160,.35);color:#e6f4ff;border-radius:8px;padding:6px 10px;cursor:pointer}
+    .btn[disabled]{opacity:.5;cursor:not-allowed}
+    select,input{background:rgba(255,255,255,.08);color:#e6f4ff;border:1px solid #5aa7ff;border-radius:6px;padding:4px 6px}
+    label{font-size:12px;color:#dbeafe}
+    .stat{background:rgba(255,255,255,.08);padding:3px 6px;border-radius:6px}
+    #countdown,#sessionClock{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:130px;font-weight:900;
+      color:#fff;text-shadow:0 0 16px rgba(0,0,0,.7);pointer-events:none;z-index:13;display:none}
+    #sessionClock{top:14%;font-size:42px;display:block}
+    .badge{padding:2px 6px;border-radius:6px}
+    .ok{background:rgba(60,255,120,.22);border:1px solid rgba(60,255,120,.5)}
+    .slow{background:rgba(255,200,60,.22);border:1px solid rgba(255,200,60,.5)}
+    .err{background:rgba(255,90,90,.22);border:1px solid rgba(255,90,90,.5)}
+    .dot{width:10px;height:10px;border-radius:50%;background:#888;display:inline-block}
+    .dot.on{background:#3cff7a;box-shadow:0 0 8px #3cff7a}
   </style>
 </head>
 <body>
-  <div class="overlay">
-    <strong>VR — Lettre qui défile</strong><br>
-    Cliquez sur <em>Enter VR</em> (icône casque en bas à droite).<br>
-    Cliquez la lettre pour la changer, ou tapez A–Z.
+  <div class="overlay" id="overlay">
+    <div class="row">
+      <strong>VR — Protocole (Canvas v3 FIX)</strong>
+      <span id="micDot" class="dot" title="Micro"></span>
+      <button id="micBtn" class="btn">🎤 Micro</button>
+      <button id="enterBtn" class="btn">🕶️ Enter VR</button>
+      <button id="startBtn" class="btn">▶️ Start</button>
+      <button id="stopBtn" class="btn" disabled>⏹️ Stop</button>
+      <button id="exportBtn" class="btn" disabled>⬇️ Export CSV</button>
+      <button id="testBtn" class="btn">🧪 Auto‑test</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label>ID session/patient</label>
+      <input id="sessionId" type="text" placeholder="ex: P-2025-10-24-001" style="width:220px"/>
+      <label>Directions</label>
+      <select id="dirSelect">
+        <option value="2">2 (→ ←)</option>
+        <option value="4">4 (↑ → ↓ ←)</option>
+        <option value="6">6 (↑ ↗ → ↓ ↙ ←)</option>
+        <option value="8" selected>8 (↑ ↗ → ↘ ↓ ↙ ← ↖)</option>
+      </select>
+      <label>Distance (m)</label>
+      <input id="distInput" type="number" min="0.8" step="0.1" value="3.0" style="width:80px"/>
+      <label>Angle hors FOV (°)</label>
+      <input id="offFovInput" type="number" min="40" max="120" step="5" value="60" style="width:80px"/>
+      <label>Minuteur (min)</label>
+      <input id="timerMin" type="number" min="0" step="1" value="0" style="width:70px"/>
+      <label>Seuil (ms)</label>
+      <input id="threshInput" type="number" min="100" step="50" value="800" style="width:80px"/>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <span class="stat">Lettre: <span id="curLetter">—</span></span>
+      <span class="stat">Direction: <span id="curDir">—</span></span>
+      <span class="stat">Essais: <span id="nTrials">0</span></span>
+      <span class="stat">Correct: <span id="nOk">0</span></span>
+      <span class="stat">Erreurs: <span id="nErr">0</span></span>
+      <span class="stat">Dernier: <span id="lastTime" class="badge">—</span></span>
+      <span class="stat">Moyenne: <span id="avgTime">—</span></span>
+    </div>
   </div>
 
-  <a-scene background="color: #000000">
+  <div id="countdown">3</div>
+  <div id="sessionClock" style="display:none">00:00</div>
+
+  <a-scene background="color:#000000">
     <a-entity id="cameraRig">
-      <a-entity camera look-controls position="0 1.6 0"></a-entity>
+      <a-entity id="cam" camera look-controls="pointerLockEnabled:true" position="0 1.6 0"></a-entity>
     </a-entity>
 
-    <a-entity id="scrollText" position="4 1.6 -3"
-              text="value: A; align: center; color: #FFFFFF; width: 6; baseline: center; font: https://cdn.aframe.io/fonts/mozillavr.fnt"
-              class="clickable"
-              animation="property: position; to: -4 1.6 -3; dur: 6000; loop: true; easing: linear"></a-entity>
+    <!-- Flèche de direction FIXE (plane avec texture canvas) -->
+    <a-entity id="arrowEntity" geometry="primitive: plane; width: 1.2; height: 1.2"
+              position="0 1.6 -1.5" material="transparent:true"></a-entity>
 
-    <a-entity id="scrollText2" position="8 1.6 -3"
-              text="value: A; align: center; color: #FFFFFF; width: 6; baseline: center; font: https://cdn.aframe.io/fonts/mozillavr.fnt"
-              animation="property: position; to: -8 1.6 -3; dur: 6000; loop: true; easing: linear; delay: 3000"></a-entity>
+    <!-- Lettre cible (plane avec texture canvas) -->
+    <a-entity id="letterEntity" geometry="primitive: plane; width: 1.6; height: 1.6"
+              material="transparent:true" visible="false"></a-entity>
 
-    <a-entity light="type: ambient; intensity: 0.9"></a-entity>
-
-    <script>
-      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-      let index = 0;
-      function cycleLetter(entity){ index = (index + 1) % letters.length; entity.setAttribute('text','value',letters[index]); }
-      window.addEventListener('load',()=>{
-        const e1=document.getElementById('scrollText'), e2=document.getElementById('scrollText2');
-        e1.addEventListener('click',()=>cycleLetter(e1)); e2.addEventListener('click',()=>cycleLetter(e2));
-        window.addEventListener('keydown',ev=>{
-          const k=ev.key.toUpperCase(); if(/^[A-Z]$/.test(k)){ e1.setAttribute('text','value',k); e2.setAttribute('text','value',k); }
-        });
-      });
-    </script>
+    <a-entity light="type: ambient; intensity:1.0"></a-entity>
   </a-scene>
+
+<script>
+(()=>{
+  const camEl = document.getElementById('cam');
+  const arrowEl = document.getElementById('arrowEntity');
+  const letterEl = document.getElementById('letterEntity');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const enterBtn = document.getElementById('enterBtn');
+  const micBtn = document.getElementById('micBtn');
+  const micDot = document.getElementById('micDot');
+  const testBtn = document.getElementById('testBtn');
+
+  const sessionIdInput = document.getElementById('sessionId');
+  const dirSelect = document.getElementById('dirSelect');
+  const distInput = document.getElementById('distInput');
+  const offFovInput = document.getElementById('offFovInput');
+  const timerMin = document.getElementById('timerMin');
+  const threshInput = document.getElementById('threshInput');
+
+  const curLetter = document.getElementById('curLetter');
+  const curDir = document.getElementById('curDir');
+  const nTrialsEl = document.getElementById('nTrials');
+  const nOkEl = document.getElementById('nOk');
+  const nErrEl = document.getElementById('nErr');
+  const lastTimeEl = document.getElementById('lastTime');
+  const avgTimeEl = document.getElementById('avgTime');
+  const countdownEl = document.getElementById('countdown');
+  const sessionClock = document.getElementById('sessionClock');
+
+  function enterVR(){ const btn=document.querySelector('.a-enter-vr'); if(btn) btn.click(); }
+  enterBtn.onclick = enterVR;
+
+  // --- Canvas textures ---
+  const arrowCanvas = document.createElement('canvas');
+  arrowCanvas.width = 512; arrowCanvas.height = 512;
+  const arrowCtx = arrowCanvas.getContext('2d');
+
+  const letterCanvas = document.createElement('canvas');
+  letterCanvas.width = 1024; letterCanvas.height = 1024;
+  const letterCtx = letterCanvas.getContext('2d');
+
+  const arrowTex = new THREE.CanvasTexture(arrowCanvas);
+  const letterTex = new THREE.CanvasTexture(letterCanvas);
+
+  arrowEl.addEventListener('loaded', () => {
+    const mat = arrowEl.getObject3D('mesh').material;
+    mat.map = arrowTex; mat.transparent = true; mat.needsUpdate = true;
+    arrowEl.object3D.lookAt(new THREE.Vector3(0,1.6,0));
+  });
+  letterEl.addEventListener('loaded', () => {
+    const mat = letterEl.getObject3D('mesh').material;
+    mat.map = letterTex; mat.transparent = true; mat.needsUpdate = true;
+  });
+
+  function drawLetter(letter){
+    const ctx = letterCtx;
+    ctx.clearRect(0,0,letterCanvas.width,letterCanvas.height);
+    ctx.shadowColor='rgba(0,0,0,0.6)'; ctx.shadowBlur=24; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
+    ctx.fillStyle='#ffffff';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font='800 720px system-ui, Arial, sans-serif';
+    ctx.fillText(letter, letterCanvas.width/2, letterCanvas.height/2+40);
+    letterTex.needsUpdate = true;
+  }
+
+  function drawArrow(symbol){
+    const ctx = arrowCtx;
+    ctx.clearRect(0,0,arrowCanvas.width,arrowCanvas.height);
+    ctx.fillStyle='rgba(120,170,255,0.12)';
+    ctx.fillRect(0,0,arrowCanvas.width,arrowCanvas.height);
+    ctx.shadowColor='rgba(120,200,255,0.8)'; ctx.shadowBlur=26;
+    ctx.fillStyle='#AEE3FF';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font='900 360px system-ui, Arial, sans-serif';
+    ctx.fillText(symbol, arrowCanvas.width/2, arrowCanvas.height/2+20);
+    arrowTex.needsUpdate = true;
+  }
+
+  // ---------- FIX: Directions calculées à partir de la POSE DE DÉPART ----------
+  let basePos = null, baseQuat = null;
+  function captureBasePose(){
+    const camObj = camEl.object3D;
+    basePos = camObj.getWorldPosition(new THREE.Vector3());
+    baseQuat = camObj.getWorldQuaternion(new THREE.Quaternion());
+  }
+  // vecteurs de base
+  function baseAxes(){
+    const f = new THREE.Vector3(0,0,-1).applyQuaternion(baseQuat).normalize();
+    const r = new THREE.Vector3(1,0,0).applyQuaternion(baseQuat).normalize();
+    const u = new THREE.Vector3(0,1,0).applyQuaternion(baseQuat).normalize();
+    return {f,r,u};
+  }
+
+  // construit un vecteur à angle fixe "theta" depuis f vers une cible "t"
+  function dirAtAngleFromForward(thetaDeg, target){
+    const {f} = baseAxes();
+    const theta = THREE.MathUtils.degToRad(thetaDeg);
+    // composante dans le plan de f->target
+    const tNorm = target.clone().normalize();
+    const proj = f.clone().multiplyScalar(f.dot(tNorm)); // projection de t sur f
+    let ortho = tNorm.clone().sub(proj); // retirer la composante parallèle
+    if (ortho.lengthSq() < 1e-6) {
+      // si target parallèle à f, prendre un vecteur perpendiculaire arbitraire
+      const {r,u} = baseAxes();
+      ortho = r.clone(); // peu importe, car l'angle sera theta de toute façon
+    }
+    ortho.normalize();
+    const v = f.clone().multiplyScalar(Math.cos(theta)).add(ortho.multiplyScalar(Math.sin(theta)));
+    return v.normalize();
+  }
+
+  // tables de cibles cardinales/diagonales (basées sur la pose de départ)
+  function cardinalTarget(name){
+    const {f,r,u} = baseAxes();
+    switch(name){
+      case '↑': return u;
+      case '↗': return r.clone().add(u).normalize();
+      case '→': return r;
+      case '↘': return r.clone().sub(u).normalize();
+      case '↓': return u.clone().multiplyScalar(-1);
+      case '↙': return r.clone().multiplyScalar(-1).sub(u).normalize();
+      case '←': return r.clone().multiplyScalar(-1);
+      case '↖': return u.clone().add(r.clone().multiplyScalar(-1)).normalize();
+    }
+    return r; // fallback
+  }
+
+  const ALL_DIRS = ['↑','↗','→','↘','↓','↙','←','↖'];
+  function poolFor(mode){
+    if(mode==='2') return ['→','←'];
+    if(mode==='4') return ['↑','→','↓','←'];
+    if(mode==='6') return ['↑','↗','→','↓','↙','←'];
+    return ALL_DIRS;
+  }
+
+  function randChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  let targetDirName = '↑';
+  function chooseDirection(){
+    const pool = poolFor(dirSelect.value);
+    targetDirName = randChoice(pool);
+    drawArrow(targetDirName);
+    curDir.textContent = targetDirName;
+    // vecteur final: angle EXACT "offFOV" depuis l'avant de base vers la cible demandée
+    const t = cardinalTarget(targetDirName);
+    const ang = Math.max(40, Math.min(120, parseFloat(offFovInput.value)||60));
+    return dirAtAngleFromForward(ang, t);
+  }
+
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+  let trialOn=false, startTime=0;
+  let trials=0, ok=0, err=0, sumTime=0;
+  let targetLetter='A';
+  let sessionEndTs = 0, sessionTimerId = null;
+  let trialsLog = [];
+  let currentSessionId = '';
+
+  function placeLetterFixed(){
+    const dist = Math.max(0.8, parseFloat(distInput.value));
+    const dir = chooseDirection(); // déjà angle fixé
+    const pos = basePos.clone().add(dir.multiplyScalar(dist)); // toujours depuis la POSE DE DÉPART (fixe)
+    letterEl.object3D.position.copy(pos);
+    // billboard vers la tête actuelle pour confort de lecture
+    const camPos = camEl.object3D.getWorldPosition(new THREE.Vector3());
+    letterEl.object3D.lookAt(camPos);
+  }
+
+  function countdownThen(cb){
+    const seq=['3','2','1','GO'];
+    countdownEl.style.display='block';
+    let i=0;
+    const tick=()=>{
+      countdownEl.textContent=seq[i++];
+      if(i<seq.length) setTimeout(tick,650);
+      else{ countdownEl.style.display='none'; cb(); }
+    };
+    tick();
+  }
+
+  function startTrial(){
+    targetLetter = letters[Math.floor(Math.random()*letters.length)];
+    curLetter.textContent = targetLetter;
+    drawLetter(targetLetter);
+    letterEl.setAttribute('visible',false);
+    placeLetterFixed();
+    countdownThen(()=>{
+      letterEl.setAttribute('visible',true);
+      startTime = performance.now();
+      trialOn = true;
+    });
+  }
+
+  function endTrial(correct, spoken=''){
+    trialOn=false;
+    let dt = 0;
+    if(correct){
+      ok++; nOkEl.textContent=String(ok);
+      dt = performance.now()-startTime;
+      sumTime += dt;
+      avgTimeEl.textContent = (sumTime/ok|0)+' ms';
+    } else {
+      err++; nErrEl.textContent=String(err);
+    }
+    trials++; nTrialsEl.textContent=String(trials);
+    const thresh = parseInt(threshInput.value,10);
+    const cls = correct ? (dt<=thresh?'ok':'slow') : 'err';
+    lastTimeEl.textContent = dt?((dt|0)+' ms'):'—';
+    lastTimeEl.className = 'badge '+cls;
+
+    trialsLog.push({
+      session_id: currentSessionId || '',
+      ts: new Date().toISOString(),
+      letter: targetLetter,
+      direction: targetDirName,
+      distance_m: parseFloat(distInput.value),
+      off_fov_deg: parseFloat(offFovInput.value)||60,
+      reaction_ms: dt|0,
+      correct: !!correct,
+      spoken: spoken
+    });
+    exportBtn.disabled = trialsLog.length===0;
+
+    if (!sessionEndTs || Date.now() < sessionEndTs){
+      setTimeout(startTrial, 450);
+    } else {
+      stopSession();
+    }
+  }
+
+  function startSessionClock(minutes){
+    if(!minutes || minutes<=0){ sessionClock.style.display='none'; return; }
+    sessionEndTs = Date.now() + minutes*60*1000;
+    sessionClock.style.display='block';
+    function tick(){
+      const left = Math.max(0, sessionEndTs - Date.now());
+      const m = Math.floor(left/60000);
+      const s = Math.floor((left%60000)/1000);
+      sessionClock.textContent = String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+      if(left<=0){ stopSession(); return; }
+      sessionTimerId = setTimeout(tick, 250);
+    }
+    tick();
+  }
+
+  function stopSession(){
+    startBtn.disabled=false; stopBtn.disabled=true;
+    trialOn=false;
+    letterEl.setAttribute('visible',false);
+    drawArrow('•');
+    if (sessionTimerId){ clearTimeout(sessionTimerId); sessionTimerId=null; }
+    sessionClock.style.display = 'none';
+  }
+
+  function startSession(){
+    // Capture POSE DE DÉPART une fois pour toutes (corrige le biais gauche/droite + position fixe)
+    captureBasePose();
+    currentSessionId = (sessionIdInput.value||'').trim();
+
+    trials=ok=err=sumTime=0;
+    nTrialsEl.textContent='0'; nOkEl.textContent='0'; nErrEl.textContent='0';
+    avgTimeEl.textContent='—'; lastTimeEl.textContent='—'; lastTimeEl.className='badge';
+    trialsLog=[]; exportBtn.disabled=true;
+
+    startBtn.disabled=true; stopBtn.disabled=false;
+    const mins = parseInt(timerMin.value,10)||0;
+    sessionEndTs = 0;
+    if(mins>0) startSessionClock(mins);
+    startTrial();
+  }
+
+  // Speech Recognition (fr-FR)
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition=null, listening=false;
+  if(!SR){
+    document.getElementById('overlay').insertAdjacentHTML('beforeend','<div style="margin-top:6px;font-size:12px;opacity:.9">Reconnaissance vocale indisponible. Utilisez un clavier Bluetooth (A–Z) ou cliquez la lettre.</div>');
+    micBtn.disabled = true;
+  }else{
+    recognition = new SR();
+    recognition.lang='fr-FR';
+    recognition.continuous=true;
+    recognition.interimResults=false;
+    recognition.onresult = (ev)=>{
+      const text = ev.results[ev.results.length-1][0].transcript.trim();
+      const L = transcriptToLetter(text);
+      if (!trialOn) return;
+      if (L && L===targetLetter) endTrial(true, text);
+      else endTrial(false, text||'');
+    };
+    recognition.onstart = ()=> micDot.classList.add('on');
+    recognition.onend = ()=> { micDot.classList.remove('on'); if(listening){ try{recognition.start();}catch(e){} } };
+    recognition.onerror = (e)=> console.warn('speech error', e);
+    micBtn.onclick = ()=>{
+      if(!listening){ try{ recognition.start(); listening=true; micBtn.textContent='⏹️ Micro'; }catch(e){} }
+      else{ listening=false; try{ recognition.stop(); }catch(e){} micBtn.textContent='🎤 Micro'; }
+    };
+  }
+
+  const mapFr = [
+    ['double ve','W'],['double v','W'],['double vé','W'],['double u','W'],['double vu','W'],
+    ['y grec','Y'],['igrec','Y'],['i grec','Y'],
+    ['a','A'],['bé','B'],['be','B'],['b','B'],
+    ['cé','C'],['ce','C'],['c','C'],
+    ['dé','D'],['de','D'],['d','D'],
+    ['e','E'],['é','E'],['è','E'],
+    ['effe','F'],['f','F'],
+    ['gé','G'],['g','G'],['je','G'],
+    ['ache','H'],['h','H'],['ha','H'],
+    ['i','I'],
+    ['ji','J'],['j','J'],
+    ['ka','K'],['k','K'],
+    ['elle','L'],['l','L'],
+    ['aime','M'],['m','M'],
+    ['enne','N'],['n','N'],
+    ['o','O'],
+    ['pé','P'],['pe','P'],['p','P'],
+    ['ku','Q'],['queue','Q'],['q','Q'],
+    ['er','R'],['r','R'],
+    ['esse','S'],['s','S'],
+    ['té','T'],['te','T'],['t','T'],
+    ['u','U'],
+    ['vé','V'],['ve','V'],['v','V'],
+    ['w','W'],['doublev','W'],
+    ['x','X'],['iks','X'],
+    ['zède','Z'],['z','Z']
+  ];
+  function normalize(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[^a-z\s-]/g,'').trim(); }
+  function transcriptToLetter(t){
+    const n=normalize(t);
+    if (/^[a-z]$/.test(n)) return n.toUpperCase();
+    const sorted = mapFr.slice().sort((a,b)=>b[0].length-a[0].length);
+    for (const [k,v] of sorted){ if(n.includes(k)) return v; }
+    return null;
+  }
+
+  // Export CSV (avec session_id + angle hors FOV utilisé)
+  function exportCSV(){
+    const header=['session_id','timestamp','letter','direction','distance_m','off_fov_deg','reaction_ms','correct','spoken'];
+    const rows=[header.join(',')];
+    for (const t of trialsLog){
+      rows.push([t.session_id,t.ts,t.letter,t.direction,t.distance_m,t.off_fov_deg,t.reaction_ms,t.correct,JSON.stringify(t.spoken||'')].join(','));
+    }
+    const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='vr_letters_results.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+  exportBtn.onclick = exportCSV;
+
+  // Letter click = correct (secours)
+  letterEl.addEventListener('click', ()=>{ if(trialOn) endTrial(true,'click'); });
+
+  // Keyboard
+  window.addEventListener('keydown', (ev)=>{
+    const k=(ev.key||'').toUpperCase();
+    if(k==='S' && !trialOn && startBtn.disabled===false) startSession();
+    if (/^[A-Z]$/.test(k)){
+      if(!trialOn) return;
+      if (k===targetLetter) endTrial(true,'key:'+k); else endTrial(false,'key:'+k);
+    }
+    if(k===' '){ if(trialOn) endTrial(true,'space'); }
+    if(k==='0'){ camEl.object3D.rotation.set(0,0,0); }
+  });
+
+  startBtn.onclick = startSession;
+  stopBtn.onclick  = stopSession;
+  testBtn.onclick = ()=>{
+    // Test: A droit devant, flèche ↑ (ne passe pas par la logique off-FOV)
+    drawArrow('↑');
+    drawLetter('A');
+    const camObj=camEl.object3D;
+    const pos=camObj.getWorldPosition(new THREE.Vector3());
+    const dir=new THREE.Vector3(0,0,-1).applyQuaternion(camObj.getWorldQuaternion(new THREE.Quaternion()));
+    const target=pos.clone().add(dir.multiplyScalar(1.7));
+    letterEl.object3D.position.copy(target);
+    letterEl.setAttribute('visible',true);
+    letterEl.object3D.lookAt(pos);
+  };
+
+})();</script>
 </body>
 </html>
