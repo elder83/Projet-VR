@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VOR Trainer — Lettres • Métronome • Séquences • Journal (Stable)</title>
+  <style>
+    :root { --bg:#0b0c0f; --fg:#f2f5f7; --accent:#6ee7ff; --muted:#aab4c0; --danger:#ff6b6b; --ok:#22c55e; --warn:#f59e0b; --grid:rgba(255,255,255,0.12); }
+    [data-theme="light"] { --bg:#fff; --fg:#0a0a0a; --muted:#4b5563; --accent:#2563eb; --grid:rgba(0,0,0,0.12); }
+    [data-theme="high-contrast"] { --bg:#000; --fg:#fff; --accent:#00ffff; --muted:#d1d5db; --grid:rgba(255,255,255,0.25); }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;}
+    .app{display:grid;grid-template-rows:auto auto 1fr auto;gap:12px;height:100%;}
+    header,footer{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0));border-bottom:1px solid var(--grid);}
+    header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.2px;}
+    header .right,footer .right{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+    .tabs{display:flex;gap:8px;padding:0 14px;flex-wrap:wrap;}
+    .tab{padding:8px 12px;border-radius:10px;cursor:pointer;border:1px solid var(--grid);color:var(--muted);}
+    .tab.active{color:var(--fg);border-color:var(--accent);}
+    .panel{padding:10px 14px;display:none;gap:10px;align-items:center;flex-wrap:wrap;}
+    .panel.active{display:flex;}
+    .panel label{font-size:13px;color:var(--muted);}
+    .panel input[type="number"],.panel input[type="text"],.panel select,.panel textarea{background:transparent;border:1px solid var(--grid);color:var(--fg);padding:6px 8px;border-radius:8px;outline:none;min-width:70px;}
+    .panel input[type="range"]{width:160px;}
+    .btn{border:1px solid var(--grid);color:var(--fg);background:rgba(255,255,255,0.02);padding:8px 12px;border-radius:12px;cursor:pointer;user-select:none;font-weight:600;}
+    .btn.primary{border-color:var(--accent);} .btn.success{border-color:var(--ok);} .btn.danger{border-color:var(--danger);} .btn.warn{border-color:var(--warn);} .btn:active{transform:translateY(1px);}
+    .stage{position:relative;display:grid;place-items:center;padding:6vh 2vw;height:100%;border:1px dashed var(--grid);border-radius:16px;margin:0 14px 10px;overflow:hidden;}
+    .letter{font-weight:700;letter-spacing:.02em;line-height:1;text-align:center;user-select:none;transition:opacity .15s ease;}
+    .shadow{position:absolute;inset:0;background:radial-gradient(60% 40% at 50% 50%,rgba(255,255,255,.04),rgba(0,0,0,0));pointer-events:none;}
+    .flash{position:absolute;inset:0;background:rgba(255,255,255,0);pointer-events:none;transition:background .08s ease;}
+    .flash.active{background:rgba(255,255,255,0.12);}
+    .badge{font-size:12px;color:var(--muted);border:1px solid var(--grid);padding:3px 8px;border-radius:999px;}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;border:1px solid var(--grid);border-bottom-width:3px;padding:2px 6px;border-radius:6px;background:rgba(255,255,255,0.04);}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+    footer{border-top:1px solid var(--grid);} footer small{color:var(--muted);}
+    .grid{width:100%;border-collapse:collapse;} .grid th,.grid td{border:1px solid var(--grid);padding:6px 8px;font-size:13px;} .grid th{color:var(--muted);font-weight:600;text-align:left;}
+    .stack{display:grid;gap:10px;} .col2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;} @media(max-width:900px){.col2{grid-template-columns:1fr;}}
+    canvas{width:100%;height:280px;background:rgba(255,255,255,0.02);border:1px solid var(--grid);border-radius:12px;}
+  </style>
+</head>
+<body>
+<div class="app" id="app" data-theme="dark">
+  <header>
+    <h1>VOR Trainer — Lettres • Métronome • Séquences • Journal</h1>
+    <div class="right">
+      <span class="badge">Raccourcis : <span class="kbd">Espace</span> start/stop • <span class="kbd">F</span> plein écran • <span class="kbd">↑/↓</span> vitesse • <span class="kbd">+/−</span> taille</span>
+      <button class="btn" id="themeBtn">Thème</button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="letters">Lettres</div>
+    <div class="tab" data-tab="metronome">Métronome</div>
+    <div class="tab" data-tab="sequence">Séquences</div>
+    <div class="tab" data-tab="journal">Journal & Progression</div>
+  </div>
+
+  <!-- Letters -->
+  <section class="panel active" id="controls-letters">
+    <div class="row">
+      <button class="btn success" id="startBtn">Démarrer</button>
+      <button class="btn danger" id="stopBtn">Stop</button>
+      <button class="btn" id="nextBtn">Suivante</button>
+      <label><input type="checkbox" id="lockToMetro" /> Verrouiller la vitesse sur le métronome</label>
+    </div>
+    <div class="row">
+      <label>Vitesse (lettres/sec)</label>
+      <input type="range" id="speed" min="0.2" max="5" step="0.1" value="1.0"/>
+      <input type="number" id="speedNum" min="0.2" max="5" step="0.1" value="1.0" style="width:80px"/>
+      <span class="badge">Optimal VOR : 1–2 Hz</span>
+    </div>
+    <div class="row">
+      <label>Taille (px)</label>
+      <input type="range" id="fontSize" min="40" max="400" step="2" value="160"/>
+      <input type="number" id="fontSizeNum" min="40" max="400" step="2" value="160" style="width:80px"/>
+    </div>
+    <div class="row">
+      <label>Jeu de caractères</label>
+      <select id="charset">
+        <option value="uppercase">A–Z (majuscules)</option>
+        <option value="lowercase">a–z (minuscules)</option>
+        <option value="digits">0–9 (chiffres)</option>
+        <option value="sloan">Sloan (C D H K N O R S V Z)</option>
+        <option value="custom">Personnalisé…</option>
+      </select>
+      <input type="text" id="customSet" placeholder="Ex : ABCDEF0123" style="width:200px; display:none" />
+    </div>
+    <div class="row">
+      <label>Thème</label>
+      <select id="themeSelect">
+        <option value="dark">Sombre</option>
+        <option value="light">Clair</option>
+        <option value="high-contrast">Haut contraste</option>
+      </select>
+      <label><input type="checkbox" id="shuffleCase" checked /> Mélanger la casse</label>
+      <label><input type="checkbox" id="noRepeat" /> Éviter les répétitions</label>
+      <label><input type="checkbox" id="beep" /> Bip à chaque lettre</label>
+    </div>
+  </section>
+
+  <!-- Metronome -->
+  <section class="panel" id="controls-metronome">
+    <div class="row">
+      <button class="btn success" id="metroStart">Métronome ON</button>
+      <button class="btn danger" id="metroStop">OFF</button>
+      <button class="btn" id="metroTap">Tap Tempo</button>
+    </div>
+    <div class="row">
+      <label>Fréquence métronome (Hz)</label>
+      <input type="range" id="metroHz" min="0.5" max="3" step="0.1" value="1.5"/>
+      <input type="number" id="metroHzNum" min="0.5" max="3" step="0.1" value="1.5" style="width:80px"/>
+      <span class="badge">Optimal VOR : 1–2 Hz (≈ 60–120 cpm)</span>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="metroFlash" checked/> Flash visuel</label>
+      <label><input type="checkbox" id="metroSound" checked/> Son</label>
+      <label><input type="checkbox" id="metroLink" /> Lier la vitesse des lettres au métronome</label>
+    </div>
+  </section>
+
+  <!-- Sequences -->
+  <section class="panel" id="controls-sequence">
+    <div class="row">
+      <button class="btn primary" id="seqAdd">+ Ajouter un bloc</button>
+      <button class="btn warn" id="seqClear">Effacer</button>
+      <button class="btn success" id="seqStart">Démarrer Séquence</button>
+      <button class="btn danger" id="seqStop">Stop</button>
+      <span class="badge">Presets :</span>
+      <select id="presetSelect">
+        <option value="S1">S1 — Semaine 1 (Aigu → Subaigu)</option>
+        <option value="S2">S2 — Semaine 2 (Progression VOR)</option>
+        <option value="S3">Semaine 3 (Debout / Fond complexe)</option>
+        <option value="S4">Semaine 4 (Marche / Dual-task)</option>
+      </select>
+      <button class="btn" id="presetLoad">Charger</button>
+    </div>
+    <table class="grid" id="seqTable">
+      <thead><tr><th>#</th><th>Type</th><th>Durée (s)</th><th>Fréq (Hz)</th><th>Mode</th><th>Suppr.</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Journal -->
+  <section class="panel" id="panel-journal">
+    <div class="stack" style="width:100%">
+      <div class="row">
+        <label>Patient</label><input type="text" id="pName" placeholder="Nom / ID" style="width:200px"/>
+        <label>Avant séance — Vertige (0–10)</label><input type="number" id="preDizzy" min="0" max="10" step="1" value="0" style="width:80px"/>
+        <label>Après séance — Vertige (0–10)</label><input type="number" id="postDizzy" min="0" max="10" step="1" value="0" style="width:80px"/>
+        <input type="text" id="notes" placeholder="Notes (ex: X1 debout, fond complexe)" style="min-width:260px"/>
+        <button class="btn success" id="logSession">Ajouter au journal</button>
+      </div>
+      <div class="col2">
+        <div class="stack">
+          <table class="grid" id="journalTable">
+            <thead>
+              <tr><th>Date</th><th>Patient</th><th>Mode</th><th>Hz</th><th>Durée (s)</th><th>Letters</th><th>Pré</th><th>Post</th><th>Notes</th><th>Suppr.</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="row">
+            <button class="btn" id="exportCSV">Exporter CSV</button>
+            <button class="btn danger" id="clearJournal">Vider Journal</button>
+          </div>
+        </div>
+        <div class="stack">
+          <canvas id="chartHz"></canvas>
+          <canvas id="chartDizzy"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main class="stage" id="stage">
+    <div class="shadow"></div><div class="flash" id="flash"></div>
+    <div class="letter" id="letter" style="font-size:160px;">A</div>
+  </main>
+
+  <footer>
+    <small id="status">⏸️ En pause</small>
+    <div class="right"><small>Compteur : <span id="count">0</span></small><button class="btn" id="fsBtn">Plein écran</button></div>
+  </footer>
+</div>
+
+<audio id="beepTone">
+  <source src="data:audio/wav;base64,UklGRlQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQwAAAAAAP8AAP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A" type="audio/wav">
+</audio>
+
+<script>
+(function(){
+  const state = {
+    running:false,timer:null,lastChar:null,pool:[],avoidRepeat:false,count:0,
+    metroOn:false,metroTimer:null,metroHz:1.5,tapTimes:[],audioCtx:null,
+    seq:[],seqIndex:-1,seqRemaining:0,seqTimer:null,seqOn:false,
+    journal:[],sessionStart:null,sessionLetters:0,sessionMode:'Libre',sessionHz:1.0,
+  };
+  const els = {
+    app: g('app'), letter: g('letter'), startBtn: g('startBtn'), stopBtn: g('stopBtn'), nextBtn: g('nextBtn'),
+    speed: g('speed'), speedNum: g('speedNum'), fontSize: g('fontSize'), fontSizeNum: g('fontSizeNum'),
+    charset: g('charset'), customSet: g('customSet'), themeBtn: g('themeBtn'), themeSelect: g('themeSelect'),
+    shuffleCase: g('shuffleCase'), noRepeat: g('noRepeat'), beep: g('beep'), fsBtn: g('fsBtn'),
+    stage: g('stage'), status: g('status'), count: g('count'), lockToMetro: g('lockToMetro'),
+    tabs: q('.tab'), panelLetters: g('controls-letters'), panelMetronome: g('controls-metronome'),
+    panelSequence: g('controls-sequence'), panelJournal: g('panel-journal'),
+    metroStart: g('metroStart'), metroStop: g('metroStop'), metroTap: g('metroTap'),
+    metroHz: g('metroHz'), metroHzNum: g('metroHzNum'), metroFlash: g('metroFlash'), metroSound: g('metroSound'), metroLink: g('metroLink'), flash: g('flash'),
+    seqAdd: g('seqAdd'), seqClear: g('seqClear'), seqStart: g('seqStart'), seqStop: g('seqStop'),
+    seqTable: g('seqTable').querySelector('tbody'), presetSelect: g('presetSelect'), presetLoad: g('presetLoad'),
+    pName: g('pName'), preDizzy: g('preDizzy'), postDizzy: g('postDizzy'), notes: g('notes'),
+    journalTable: g('journalTable').querySelector('tbody'), logSession: g('logSession'), exportCSV: g('exportCSV'), clearJournal: g('clearJournal'),
+    chartHz: g('chartHz'), chartDizzy: g('chartDizzy')
+  };
+  function g(id){ return document.getElementById(id); }
+  function q(sel){ return document.querySelectorAll(sel); }
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const ls={ get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}} };
+  const fmtDate=d=> new Date(d).toLocaleString();
+  function esc(s){return (s||"").toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+  function buildPool(){ const mode=els.charset.value; let set="";
+    if(mode==='uppercase') set="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    else if(mode==='lowercase') set="abcdefghijklmnopqrstuvwxyz";
+    else if(mode==='digits') set="0123456789";
+    else if(mode==='sloan') set="CDHKNORSVZ";
+    else if(mode==='custom') set=(els.customSet.value||"A");
+    let pool=[...set];
+    if(els.shuffleCase.checked && mode!=='digits'){ const add=[...set.toLowerCase(),...set.toUpperCase()]; pool=Array.from(new Set(add)); }
+    state.pool=pool; state.avoidRepeat=els.noRepeat.checked;
+  }
+  function nextChar(){ if(!state.pool.length) buildPool(); let c;
+    if(state.avoidRepeat && state.lastChar && state.pool.length>1){ do{ c=pick(state.pool);} while(c===state.lastChar); }
+    else { c=pick(state.pool); } state.lastChar=c; return c; }
+  function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+  function renderLetter(c){ els.letter.style.opacity=.6; requestAnimationFrame(()=>{els.letter.textContent=c; els.letter.style.opacity=1;});
+    if(els.beep.checked){ try{ g('beepTone').play().catch(()=>{});}catch(e){} } state.count+=1; state.sessionLetters+=1; els.count.textContent=state.count; }
+  function tick(){ renderLetter(nextChar()); }
+  function start(){ if(state.running) return; state.running=true; state.sessionLetters=0; state.sessionMode='Lettres'; state.sessionHz=parseFloat(els.speed.value); state.sessionStart=Date.now();
+    els.status.textContent="▶️ Lettres en cours"; tick(); const hz=parseFloat(els.speed.value); const interval=clamp(1000/hz,100,10000); state.timer=setInterval(tick,interval); save(); }
+  function stop(){ if(state.running && state.sessionStart){ addJournalEntry({ when:state.sessionStart, patient:els.pName.value||"", mode:state.sessionMode, hz:state.sessionHz,
+        duration:Math.round((Date.now()-state.sessionStart)/1000), letters:state.sessionLetters, pre:parseInt(els.preDizzy.value||0,10), post:parseInt(els.postDizzy.value||0,10), notes:(els.notes.value||"") }, false); }
+    state.running=false; els.status.textContent="⏸️ En pause"; clearInterval(state.timer); state.timer=null; save(); }
+  function next(){ stop(); renderLetter(nextChar()); }
+  function setFont(px){ px=clamp(parseInt(px,10)||160,40,400); els.letter.style.fontSize=px+"px"; els.fontSize.value=px; els.fontSizeNum.value=px; }
+  function setSpeed(hz){ hz=clamp(parseFloat(hz)||1,0.2,5); els.speed.value=hz; els.speedNum.value=hz.toFixed(1); if(state.running){ clearInterval(state.timer); state.timer=setInterval(tick,1000/hz);} }
+
+  // Tabs
+  els.tabs.forEach(t=> t.addEventListener('click', ()=>{ els.tabs.forEach(x=>x.classList.remove('active')); t.classList.add('active');
+    const target=t.getAttribute('data-tab'); document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    if(target==='letters') els.panelLetters.classList.add('active'); if(target==='metronome') els.panelMetronome.classList.add('active');
+    if(target==='sequence') els.panelSequence.classList.add('active'); if(target==='journal') els.panelJournal.classList.add('active'); }));
+
+  // Metronome
+  function metroTick(){ if(els.metroFlash.checked){ els.flash.classList.add('active'); setTimeout(()=>els.flash.classList.remove('active'),80); }
+    if(els.metroSound.checked){ try{ if(!state.audioCtx) state.audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      const o=state.audioCtx.createOscillator(), g=state.audioCtx.createGain(); o.type='square'; o.frequency.setValueAtTime(1000,state.audioCtx.currentTime);
+      g.gain.setValueAtTime(0.001,state.audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2,state.audioCtx.currentTime+0.001);
+      g.gain.exponentialRampToValueAtTime(0.001,state.audioCtx.currentTime+0.08); o.connect(g); g.connect(state.audioCtx.destination); o.start(); o.stop(state.audioCtx.currentTime+0.09);}catch(e){} }
+    if(els.metroLink.checked || els.lockToMetro.checked){ setSpeed(parseFloat(els.metroHz.value)); } }
+  function startMetro(){ if(state.metroOn) return; state.metroOn=true; const hz=parseFloat(els.metroHz.value); clearInterval(state.metroTimer); state.metroTimer=setInterval(metroTick,1000/hz); els.status.textContent="🎵 Métronome ON ("+hz.toFixed(1)+" Hz)"; }
+  function stopMetro(){ state.metroOn=false; clearInterval(state.metroTimer); state.metroTimer=null; els.status.textContent=state.running?"▶️ Lettres en cours":"⏸️ En pause"; }
+  function setMetroHz(hz){ hz=clamp(parseFloat(hz)||1.5,0.5,3); els.metroHz.value=hz; els.metroHzNum.value=hz.toFixed(1); if(state.metroOn){ clearInterval(state.metroTimer); state.metroTimer=setInterval(metroTick,1000/hz);} }
+  function tapTempo(){ const now=performance.now(); state.tapTimes.push(now); if(state.tapTimes.length>6) state.tapTimes.shift();
+    if(state.tapTimes.length>=2){ const intervals=[]; for(let i=1;i<state.tapTimes.length;i++){ intervals.push(state.tapTimes[i]-state.tapTimes[i-1]); }
+      const avg=intervals.reduce((a,b)=>a+b,0)/intervals.length; const hz=clamp(1000/avg,0.5,3); setMetroHz(hz);} }
+
+  // Presets
+  const PRESETS = {
+    S1:[{type:'ex',duration:30,hz:1.0,mode:'X1'},{type:'pause',duration:15,hz:0,mode:'X1'},{type:'ex',duration:30,hz:1.2,mode:'X1'},{type:'pause',duration:15,hz:0,mode:'X1'},{type:'ex',duration:30,hz:1.5,mode:'X1'}],
+    S2:[{type:'ex',duration:30,hz:1.2,mode:'X1'},{type:'pause',duration:15,hz:0,mode:'X1'},{type:'ex',duration:30,hz:1.5,mode:'X1'},{type:'pause',duration:15,hz:0,mode:'X1'},{type:'ex',duration:30,hz:1.8,mode:'X1'}],
+    S3:[{type:'ex',duration:30,hz:1.5,mode:'X1'},{type:'pause',duration:15,hz:0,mode:'X1'},{type:'ex',duration:30,hz:1.8,mode:'X2'},{type:'pause',duration:15,hz:0,mode:'X2'},{type:'ex',duration:30,hz:2.0,mode:'X2'}],
+    S4:[{type:'ex',duration:45,hz:1.5,mode:'X1'},{type:'pause',duration:20,hz:0,mode:'X1'},{type:'ex',duration:45,hz:2.0,mode:'X2'},{type:'pause',duration:20,hz:0,mode:'X2'},{type:'ex',duration:60,hz:2.2,mode:'X2'}]
+  };
+  function loadPreset(name){ const seq = PRESETS[name] ? PRESETS[name].map(x=>({...x})) : []; if(!seq.length) return; state.seq=seq; renderSeq(); save(); }
+
+  // Sequence
+  function renderSeq(){ els.seqTable.innerHTML=""; state.seq.forEach((b,i)=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td>
+      <td><select data-i="${i}" data-k="type"><option value="ex" ${b.type==='ex'?'selected':''}>Exercice</option><option value="pause" ${b.type==='pause'?'selected':''}>Pause</option></select></td>
+      <td><input type="number" min="5" step="1" value="${b.duration}" data-i="${i}" data-k="duration" style="width:90px"/></td>
+      <td><input type="number" min="0.5" max="3" step="0.1" value="${b.hz}" data-i="${i}" data-k="hz" style="width:90px"/></td>
+      <td><select data-i="${i}" data-k="mode"><option value="X1" ${b.mode==='X1'?'selected':''}>X1</option><option value="X2" ${b.mode==='X2'?'selected':''}>X2</option></select></td>
+      <td><button class="btn danger" data-del="${i}">X</button></td>`; els.seqTable.appendChild(tr); }); }
+  function addBlock(){ state.seq.push({type:'ex',duration:30,hz:1.5,mode:'X1'}); renderSeq(); save(); }
+  function clearBlocks(){ state.seq=[]; renderSeq(); save(); }
+  els.seqTable.addEventListener('input',(e)=>{ const i=parseInt(e.target.getAttribute('data-i'),10); const k=e.target.getAttribute('data-k');
+    if(!isNaN(i)&&k){ if(k==='duration'||k==='hz') state.seq[i][k]=parseFloat(e.target.value); else state.seq[i][k]=e.target.value; save(); } });
+  els.seqTable.addEventListener('click',(e)=>{ const del=e.target.getAttribute('data-del'); if(del!=null){ const i=parseInt(del,10); state.seq.splice(i,1); renderSeq(); save(); } });
+  els.seqAdd.addEventListener('click', addBlock);
+  els.seqClear.addEventListener('click', clearBlocks);
+  els.seqStart.addEventListener('click', seqStart);
+  els.seqStop.addEventListener('click', seqStop);
+  els.presetLoad.addEventListener('click', ()=> loadPreset(els.presetSelect.value));
+
+  function applyBlock(b){
+    if (b.type==='ex'){
+      setMetroHz(b.hz); els.metroLink.checked=true; if(!state.metroOn) startMetro();
+      setSpeed(b.hz); if(!state.running) start(); state.sessionMode=`Séquence ${b.mode}`; state.sessionHz=b.hz;
+      els.status.textContent=`▶️ Séquence: ${b.mode} ${b.hz.toFixed(1)} Hz (${b.duration}s)`;
+    } else {
+      if (state.running) stop(); els.status.textContent=`⏸️ Pause séquence (${b.duration}s)`;
+    }
+  }
+  function seqStep(){
+    if (state.seqIndex >= state.seq.length){ seqStop(); return; }
+    state.seqRemaining -= 0.2;
+    if (state.seqRemaining <= 0){
+      state.seqIndex += 1;
+      if (state.seqIndex >= state.seq.length){ seqStop(); return; }
+      const cur = state.seq[state.seqIndex];
+      applyBlock(cur);
+      state.seqRemaining = cur.duration;
+    }
+  }
+  function seqStart(){
+    if (!state.seq.length){ loadPreset('S1'); }
+    state.seqIndex = -1;
+    state.seqRemaining = 0.001; // démarrage instantané
+    state.seqOn = true;
+    clearInterval(state.seqTimer);
+    state.seqTimer = setInterval(seqStep, 200);
+    seqStep(); // kickoff immédiat
+  }
+  function seqStop(){ state.seqOn=false; clearInterval(state.seqTimer); state.seqTimer=null; els.status.textContent="⏸️ Séquence stoppée"; }
+
+  // Journal
+  function renderJournal(){ els.journalTable.innerHTML=""; state.journal.forEach((r,i)=>{
+      const tr=document.createElement('tr'); tr.innerHTML=`<td>${fmtDate(r.when)}</td><td>${esc(r.patient)}</td><td>${esc(r.mode)}</td>
+        <td>${r.hz?.toFixed ? r.hz.toFixed(1) : r.hz}</td><td>${r.duration}</td><td>${r.letters||0}</td>
+        <td>${r.pre??""}</td><td>${r.post??""}</td><td>${esc(r.notes||"")}</td><td><button class="btn danger" data-delj="${i}">X</button></td>`;
+      els.journalTable.appendChild(tr); }); drawCharts(); save(); }
+  function addJournalEntry(entry, manual=true){ if (manual && state.sessionStart){ entry.duration=entry.duration||Math.round((Date.now()-state.sessionStart)/1000); entry.letters=entry.letters||state.sessionLetters; }
+    state.journal.push(entry); renderJournal(); state.sessionStart=null; state.sessionLetters=0; }
+  function exportCSV(){ const head=["Date","Patient","Mode","Hz","Durée (s)","Letters","Pré","Post","Notes"];
+    const rows=state.journal.map(r=>[fmtDate(r.when),r.patient,r.mode,r.hz,r.duration,r.letters||0,r.pre??"",r.post??"", (r.notes||"").replace(/"/g,'""') ]);
+    const csv=[head.join(","),...rows.map(r=>r.map(x=>typeof x==="string"?`"${x}"`:x).join(","))].join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download="journal_vor.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+  function clearJournal(){ if(confirm("Vider tout le journal ?")){ state.journal=[]; renderJournal(); } }
+
+  function drawCharts(){ drawLineChart(els.chartHz, state.journal.map((r,i)=>({x:i+1,y:r.hz||0})), "Fréquence (Hz)");
+    drawLineChart(els.chartDizzy, state.journal.map((r,i)=>({x:i+1,y:r.post??null})).filter(p=>p.y!=null), "Vertige post-séance (0–10)"); }
+  function drawLineChart(canvas, points, label){
+    const ctx=canvas.getContext('2d'); const w=canvas.width=canvas.clientWidth*window.devicePixelRatio; const h=canvas.height=canvas.clientHeight*window.devicePixelRatio;
+    ctx.clearRect(0,0,w,h); ctx.strokeStyle=getStyle('--grid'); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(50,10); ctx.lineTo(50,h-30); ctx.lineTo(w-10,h-30); ctx.stroke();
+    ctx.fillStyle=getStyle('--muted'); ctx.font=`${12*window.devicePixelRatio}px system-ui`; ctx.fillText(label,55,20);
+    if(!points.length) return; const xs=points.map(p=>p.x), ys=points.map(p=>p.y); const xmin=Math.min(...xs), xmax=Math.max(...xs), ymin=Math.min(...ys), ymax=Math.max(...ys);
+    const padL=60,padB=40,padR=20,padT=20; const X=v=> padL+(w-padL-padR)*((v-xmin)/(xmax-xmin||1)); const Y=v=> h-padB-(h-padT-padB)*((v-ymin)/(ymax-ymin||1));
+    ctx.strokeStyle='rgba(150,150,150,0.25)'; for(let i=0;i<=4;i++){ const yv=ymin+(ymax-ymin)*i/4, yy=Y(yv); ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(w-padR,yy); ctx.stroke(); ctx.fillText(yv.toFixed(1),10,yy+4); }
+    ctx.strokeStyle=getStyle('--accent'); ctx.lineWidth=2; ctx.beginPath(); points.forEach((p,i)=>{ const xx=X(p.x), yy=Y(p.y); if(i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy); }); ctx.stroke();
+    ctx.fillStyle=getStyle('--fg'); points.forEach(p=>{ const xx=X(p.x), yy=Y(p.y); ctx.beginPath(); ctx.arc(xx,yy,3*window.devicePixelRatio,0,Math.PI*2); ctx.fill(); });
+  }
+  function getStyle(v){ return getComputedStyle(document.documentElement).getPropertyValue(v); }
+
+  // Theme + FS + Keyboard
+  els.themeBtn.addEventListener('click', ()=>{ const order=['dark','light','high-contrast']; const cur=els.app.getAttribute('data-theme')||'dark';
+    const next=order[(order.indexOf(cur)+1)%order.length]; els.app.setAttribute('data-theme',next); els.themeSelect.value=next; save(); });
+  els.themeSelect.addEventListener('change', e=>{ els.app.setAttribute('data-theme', e.target.value); save(); });
+  function requestFs(el){ (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen)?.call(el); }
+  function exitFs(doc){ (doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen)?.call(doc); }
+  function isFs(){ return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement; }
+  els.fsBtn.addEventListener('click', ()=>{ if(!isFs()){ requestFs(els.stage); } else { exitFs(document); } });
+  window.addEventListener('keydown',(e)=>{
+    if(e.code==='Space'){ e.preventDefault(); state.running?stop():start(); }
+    else if(e.key==='f'||e.key==='F'){ if(!isFs()) requestFs(els.stage); else exitFs(document); }
+    else if(e.key==='+'||e.key==='='){ setFont(parseInt(els.fontSize.value,10)+10); }
+    else if(e.key==='-'||e.key==='_'){ setFont(parseInt(els.fontSize.value,10)-10); }
+    else if(e.key==='ArrowUp'){ setSpeed(parseFloat(els.speed.value)+0.1); }
+    else if(e.key==='ArrowDown'){ setSpeed(parseFloat(els.speed.value)-0.1); }
+    else if(e.key==='ArrowRight'){ next(); }
+  });
+
+  // Journal events
+  els.logSession.addEventListener('click', ()=>{ addJournalEntry({ when:Date.now(), patient:els.pName.value||"", mode:state.sessionMode||'Lettres',
+    hz:parseFloat(els.speed.value), duration:state.sessionStart?Math.round((Date.now()-state.sessionStart)/1000):0,
+    letters:state.sessionLetters||0, pre:parseInt(els.preDizzy.value||"",10), post:parseInt(els.postDizzy.value||"",10), notes:els.notes.value||"" }, true); });
+  els.exportCSV.addEventListener('click', exportCSV);
+  els.clearJournal.addEventListener('click', clearJournal);
+  els.journalTable.addEventListener('click',(e)=>{ const del=e.target.getAttribute('data-delj'); if(del!=null){ const i=parseInt(del,10); state.journal.splice(i,1); renderJournal(); } });
+
+  function toggleCustom(){ els.customSet.style.display = els.charset.value==='custom' ? 'inline-block':'none'; }
+  els.charset.addEventListener('change', toggleCustom);
+  els.customSet.addEventListener('input', buildPool);
+
+  function save(){
+    ls.set('vor_trainer_stable', { speed:els.speed.value, font:els.fontSize.value, charset:els.charset.value, custom:els.customSet.value,
+      theme:els.app.getAttribute('data-theme'), shuffle:els.shuffleCase.checked, norepeat:els.noRepeat.checked, beep:els.beep.checked,
+      metroHz:els.metroHz.value, journal:state.journal, seq:state.seq });
+  }
+  function load(){
+    const s=ls.get('vor_trainer_stable', null); if(!s) return;
+    setSpeed(s.speed||1); setFont(s.font||160); els.charset.value=s.charset||'uppercase'; els.customSet.value=s.custom||'';
+    els.themeSelect.value=s.theme||'dark'; els.app.setAttribute('data-theme', s.theme||'dark');
+    els.shuffleCase.checked=!!s.shuffle; els.noRepeat.checked=!!s.norepeat; els.beep.checked=!!s.beep;
+    els.metroHz.value=s.metroHz||1.5; els.metroHzNum.value=s.metroHz||1.5;
+    state.journal=Array.isArray(s.journal)?s.journal:[]; state.seq=Array.isArray(s.seq)&&s.seq.length?s.seq:[];
+  }
+
+  // Wiring
+  els.startBtn.addEventListener('click', start);
+  els.stopBtn.addEventListener('click', stop);
+  els.nextBtn.addEventListener('click', next);
+  els.speed.addEventListener('input', ()=>{ setSpeed(els.speed.value); });
+  els.speedNum.addEventListener('input', ()=>{ setSpeed(els.speedNum.value); });
+  els.fontSize.addEventListener('input', ()=> setFont(els.fontSize.value));
+  els.fontSizeNum.addEventListener('input', ()=> setFont(els.fontSizeNum.value));
+  els.shuffleCase.addEventListener('change', buildPool);
+  els.noRepeat.addEventListener('change', ()=>{ state.avoidRepeat=els.noRepeat.checked; });
+  els.beep.addEventListener('change', ()=>{});
+  els.metroStart.addEventListener('click', startMetro);
+  els.metroStop.addEventListener('click', stopMetro);
+  els.metroTap.addEventListener('click', tapTempo);
+  els.metroHz.addEventListener('input', ()=> setMetroHz(els.metroHz.value));
+  els.metroHzNum.addEventListener('input', ()=> setMetroHz(els.metroHzNum.value));
+
+  // Init
+  load(); buildPool(); setFont(els.fontSize.value); setSpeed(els.speed.value); setMetroHz(els.metroHz.value);
+  if(!state.seq.length){ loadPreset('S1'); } renderSeq(); renderJournal();
+  window.addEventListener('beforeunload', save);
+})();
+</script>
+</body>
+</html>

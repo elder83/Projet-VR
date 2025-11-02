@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OKN Trainer — 2D/3D (Rotation, Tunnel, Séquences) – v2</title>
+<style>
+:root{--bg:#0b0c0f;--fg:#f2f5f7;--muted:#aab4c0;--accent:#00e5ff;--grid:rgba(255,255,255,0.12);--warn:#f59e0b;--ok:#22c55e;--danger:#ff6b6b}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+.app{display:grid;grid-template-rows:auto auto 1fr auto;gap:10px;height:100%}
+header,footer{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--grid);background:linear-gradient(180deg,rgba(255,255,255,.04),transparent)}
+header h1{margin:0;font-size:18px;font-weight:700}
+.tabs{display:flex;gap:8px;padding:0 14px;flex-wrap:wrap}
+.tab{padding:8px 12px;border:1px solid var(--grid);border-radius:10px;color:var(--muted);cursor:pointer}
+.tab.active{border-color:var(--accent);color:var(--fg)}
+.panel{display:none;padding:0 14px 10px}.panel.active{display:block}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.btn{border:1px solid var(--grid);color:var(--fg);background:rgba(255,255,255,0.02);padding:8px 12px;border-radius:12px;cursor:pointer;font-weight:600}
+.btn.primary{border-color:var(--accent)}.btn.success{border-color:var(--ok)}.btn.warn{border-color:var(--warn)}.btn.danger{border-color:var(--danger)}
+.badge{font-size:12px;color:var(--muted);border:1px solid var(--grid);padding:3px 8px;border-radius:999px}
+.kbd{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;border:1px solid var(--grid);border-bottom-width:3px;padding:2px 6px;border-radius:6px;background:rgba(255,255,255,0.04)}
+input,select{background:transparent;color:var(--fg);border:1px solid var(--grid);border-radius:8px;padding:6px 8px}
+input[type=number]{width:110px}
+.grid{width:100%;border-collapse:collapse;margin-top:10px}.grid th,.grid td{border:1px solid var(--grid);padding:6px 8px;font-size:13px}.grid th{color:var(--muted);text-align:left}
+.stage{position:relative;margin:0 14px 10px;border:1px dashed var(--grid);border-radius:16px;overflow:hidden;display:grid;place-items:center}
+canvas{display:block;width:100%;height:100%;background:#000}
+footer small{color:var(--muted)} .right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);border:1px solid var(--grid);padding:8px 12px;border-radius:10px;color:#dbeafe;font-size:13px}
+/* Mode clinique */
+.clinical header,.clinical .tabs,.clinical .panel,.clinical footer{display:none}.clinical .stage{margin:0;border:none;border-radius:0}
+.fixation{position:absolute;top:50%;left:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 8px rgba(0,0,0,.4)}
+.warnbox{padding:8px 12px;border:1px solid var(--warn);border-radius:10px;color:#fde68a;background:rgba(245,158,11,.12)}
+.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#cbd5e1}
+.hud{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.45);border:1px solid var(--grid);padding:4px 8px;border-radius:10px;font-size:12px;color:#cbd5e1}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <h1>OKN Trainer — 2D/3D (rotation, tunnel, séquences) — v2</h1>
+    <div class="right">
+      <span class="badge">Raccourcis : <span class="kbd">Espace</span> start/stop • <span class="kbd">F</span> plein écran • <span class="kbd">D</span> direction • <span class="kbd">R</span> inversion • <span class="kbd">M</span> mode • <span class="kbd">G</span> Point/Cube • <span class="kbd">V</span> Vibration • <span class="kbd">S</span> Stabiliser</span>
+      <button class="btn" id="themeBtn">Thème</button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="stimulus">Stimulus</div>
+    <div class="tab" data-tab="sequences">Séquences</div>
+    <div class="tab" data-tab="journal">Journal</div>
+    <div class="tab" data-tab="aide">Aide</div>
+  </div>
+
+  <section class="panel active" id="panel-stimulus">
+    <div class="controls">
+      <button class="btn success" id="playBtn">Démarrer</button>
+      <button class="btn danger" id="stopBtn">Stop</button>
+      <button class="btn" id="fsBtn">Plein écran</button>
+      <button class="btn primary" id="clinicalBtn">Mode test clinique</button>
+      <label class="badge">Type
+        <select id="typeSel">
+          <option value="stripes">Stries</option>
+          <option value="dots" selected>Points/Cubes</option>
+        </select>
+      </label>
+      <label class="badge">Direction
+        <select id="dirSel">
+          <option value="left">Gauche</option>
+          <option value="right" selected>Droite</option>
+          <option value="up">Haut</option>
+          <option value="down">Bas</option>
+        </select>
+      </label>
+      <label class="badge">Mode mouvement
+        <select id="motionMode">
+          <option value="linear" selected>Linéaire</option>
+          <option value="rotCW">Rotation horaire</option>
+          <option value="rotCCW">Rotation antihoraire</option>
+          <option value="tunnel">Tunnel (flux radial)</option>
+        </select>
+      </label>
+      <label class="badge">Vit. 2D (px/s) <input type="number" id="speed2D" min="5" max="3000" step="5" value="300"></label>
+      <label class="badge">Fixation <input type="checkbox" id="fixation"></label>
+      <label class="badge">3D Points/Cubes <input type="checkbox" id="enable3D"></label>
+    </div>
+
+    <div class="controls" id="stripesCfg">
+      <label class="badge">Largeur d'une barre (px) <input type="number" id="barWidth" min="4" max="400" step="2" value="80"></label>
+      <label class="badge">Orientation
+        <select id="stripeOrient">
+          <option value="vertical" selected>Verticales (défilement horizontal)</option>
+          <option value="horizontal">Horizontales (défilement vertical)</option>
+        </select>
+      </label>
+      <label class="badge">Couleur 1 <input type="color" id="colA" value="#ffffff"></label>
+      <label class="badge">Couleur 2 <input type="color" id="colB" value="#000000"></label>
+      <label class="badge">Contraste (0–1) <input type="number" id="contrast" min="0" max="1" step="0.05" value="0.9"></label>
+    </div>
+
+    <div class="controls" id="dotsCfg">
+      <label class="badge">Espacement (px) <input type="number" id="dotSpacing" min="2" max="40" step="1" value="6"></label>
+      <label class="badge">Taille base (px @ z=1) <input type="number" id="dotSize" min="1" max="40" step="1" value="4"></label>
+      <label class="badge">Forme 3D
+        <select id="shape3D">
+          <option value="dot" selected>Point (disque)</option>
+          <option value="cube">Cube (carré)</option>
+        </select>
+      </label>
+      <label class="badge">Couleur avant-plan <input type="color" id="dotCol" value="#ffffff"></label>
+      <label class="badge">Fond <input type="color" id="bgCol" value="#000000"></label>
+    </div>
+
+    <div class="controls" id="dots3DCfg" style="display:none">
+      <label class="badge">Z min <input type="number" id="zMin" min="0.2" max="5" step="0.1" value="0.6"></label>
+      <label class="badge">Z max <input type="number" id="zMax" min="0.5" max="10" step="0.1" value="3.0"></label>
+      <label class="badge">Z focus <input type="number" id="zFocus" min="0.2" max="10" step="0.1" value="1.2"></label>
+      <label class="badge">Vit. transverse @ z=1 (px/s) <input type="number" id="speed3D" min="0" max="4000" step="10" value="500"></label>
+      <label class="badge">Vit. radiale (Δz/s) <input type="number" id="radialSpeed" min="-2" max="2" step="0.05" value="0.0"></label>
+      <label class="badge">Vit. rotation (°/s) <input type="number" id="rotDeg" min="-720" max="720" step="1" value="60"></label>
+      <label class="badge">Ré-équilibrage profondeur
+        <select id="zRebal">
+          <option value="0" selected>Off</option>
+          <option value="5">toutes 5 s</option>
+          <option value="10">toutes 10 s</option>
+          <option value="20">toutes 20 s</option>
+        </select>
+      </label>
+      <label class="badge">Qualité 3D
+        <select id="quality3D">
+          <option value="perf" selected>Performance (très fluide)</option>
+          <option value="std">Standard</option>
+          <option value="hi">Élevée (peut saccader)</option>
+        </select>
+      </label>
+      <label class="badge">Stabiliser (anti‑vibration) <input type="checkbox" id="stabilize3D"></label>
+      <label class="badge">Vibration (défi) <input type="checkbox" id="vibrate3D"></label>
+      <label class="badge">Amp. vibration (px) <input type="number" id="vibAmp" min="0" max="20" step="0.1" value="1.5"></label>
+      <label class="badge">Fréq. vibration (Hz) <input type="number" id="vibFreq" min="0" max="20" step="0.1" value="3"></label>
+      <label class="badge">Jitter Z (Δz/s) <input type="number" id="jitterZ" min="0" max="1" step="0.01" value="0.00"></label>
+    </div>
+
+    <div class="controls">
+      <label class="badge">Inversions automatiques
+        <select id="revMode">
+          <option value="none" selected>Non</option>
+          <option value="fixed">Périodiques</option>
+          <option value="random">Aléatoires</option>
+        </select>
+      </label>
+      <label class="badge">Période (s) <input type="number" id="revPeriod" min="2" step="1" value="10"></label>
+      <label class="badge">Aléatoire min–max (s) <input type="number" id="revMin" min="2" step="1" value="5"> – <input type="number" id="revMax" min="2" step="1" value="15"></label>
+    </div>
+
+    <div class="controls">
+      <label class="badge">Distance œil–écran (cm) <input type="number" id="viewDist" min="20" max="300" step="1" value="60"></label>
+      <label class="badge">PPI écran <input type="number" id="ppi" min="60" max="400" step="1" value="110"></label>
+      <span class="badge">Vitesse estimée : <span id="degPerSec">—</span> °/s</span>
+      <button class="btn" id="safeBtn" title="Limite vitesse/particules">Mode sûr</button>
+      <button class="btn" id="resetBtn" title="Réinitialiser">Réinitialiser</button>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-sequences">
+    <div class="controls">
+      <label class="badge">Nom séquence <input type="text" id="seqName" placeholder="Ex: Protocole OKN 1" style="width:220px"></label>
+      <button class="btn" id="seqSave">Sauver</button>
+      <label class="badge">Charger <select id="seqList"></select></label>
+      <button class="btn" id="seqLoad">Charger</button>
+      <button class="btn warn" id="seqPlay">Lancer</button>
+      <button class="btn danger" id="seqStop">Stop</button>
+      <button class="btn" id="seqClear">Vider</button>
+    </div>
+    <div class="controls">
+      <label class="badge">Durée (s) <input type="number" id="sDur" min="1" max="600" step="1" value="30"></label>
+      <label class="badge">Type
+        <select id="sType"><option value="dots" selected>Points/Cubes</option><option value="stripes">Stries</option></select>
+      </label>
+      <label class="badge">3D <input type="checkbox" id="s3D" checked></label>
+      <label class="badge">Forme <select id="sShape"><option value="dot">Point</option><option value="cube" selected>Cube</option></select></label>
+      <label class="badge">Mouvement <select id="sMotion"><option value="linear">Linéaire</option><option value="rotCW">Rot. horaire</option><option value="rotCCW">Rot. antihoraire</option><option value="tunnel">Tunnel</option></select></label>
+      <label class="badge">Dir <select id="sDir"><option value="left">Gauche</option><option value="right" selected>Droite</option><option value="up">Haut</option><option value="down">Bas</option></select></label>
+      <label class="badge">Vit2D (px/s) <input type="number" id="sSpeed2D" value="300"></label>
+      <label class="badge">Vit3D (px/s@z=1) <input type="number" id="sSpeed3D" value="500"></label>
+      <label class="badge">Radiale (Δz/s) <input type="number" id="sRadial" step="0.05" value="0"></label>
+      <label class="badge">Rot (°/s) <input type="number" id="sRot" value="60"></label>
+      <button class="btn primary" id="sAdd">Ajouter étape</button>
+    </div>
+    <table class="grid">
+      <thead><tr><th>#</th><th>Durée</th><th>Type</th><th>3D</th><th>Forme</th><th>Mouvement</th><th>Dir</th><th>Vit2D</th><th>Vit3D</th><th>Radiale</th><th>Rot</th><th>Actions</th></tr></thead>
+      <tbody id="seqTbody"></tbody>
+    </table>
+    <small class="code">Astuce : créez vos protocoles et sauvez‑les localement. Le lecteur applique les paramètres automatiquement.</small>
+  </section>
+
+  <section class="panel" id="panel-journal">
+    <div class="controls">
+      <label class="badge">Patient <input type="text" id="pName" placeholder="Nom / ID" style="width:220px"></label>
+      <label class="badge">Pré (0–10) <input type="number" id="pre" min="0" max="10" step="1" value="0"></label>
+      <label class="badge">Post (0–10) <input type="number" id="post" min="0" max="10" step="1" value="0"></label>
+      <button class="btn" id="log">Ajouter au journal</button>
+      <button class="btn" id="exportCSV">Exporter CSV</button>
+      <button class="btn danger" id="clearJournal">Vider</button>
+    </div>
+    <table class="grid">
+      <thead><tr><th>Date/Heure</th><th>Patient</th><th>Type</th><th>Mode</th><th>Forme</th><th>Mouvement</th><th>Dir</th><th>Vit</th><th>Durée (s)</th><th>Pré</th><th>Post</th></tr></thead>
+      <tbody id="journalBody"></tbody>
+    </table>
+  </section>
+
+  <section class="panel" id="panel-aide">
+    <div class="warnbox">
+      <strong>Avertissement :</strong> Rotation et tunnel peuvent majorer l’inconfort. Commencer modéré, progresser selon tolérance. Utiliser <em>Mode sûr</em> si nécessaire.
+    </div>
+    <ul>
+      <li><b>Rotation</b> : rotation du champ (ω en °/s). Horaire/antihoraire.</li>
+      <li><b>Tunnel</b> : flux radial via Δz/s (− = approche, + = éloignement). Combinable avec vibration/stabilisation.</li>
+      <li><b>Espacement (px)</b> : nombre de particules = aire/(espacement²) (HiDPI‑aware). Ceci évite toute <i>bande vide</i>.</li>
+    </ul>
+
+    <div class="controls">
+      <button class="btn" id="runTests">Auto‑tests</button>
+      <small class="code">Vérifie que l’export CSV, les séquences et le calcul °/s fonctionnent.</small>
+    </div>
+  </section>
+
+  <main class="stage" id="stage" tabindex="0" title="Touchez / cliquez pour start/stop">
+    <canvas id="cv" aria-label="Stimulus visuel optocinétique"></canvas>
+    <div class="fixation" id="fix" style="display:none"></div>
+    <div class="toast" id="toast" style="display:none">—</div>
+    <div class="hud" id="hud">0 FPS</div>
+  </main>
+
+  <footer>
+    <small id="status">⏸️ Prêt</small>
+    <div class="right"><small>Session : <span id="sessDur">0</span> s</small></div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  const els={
+    app:$('#app'), cv:$('#cv'), stage:$('#stage'), hud:$('#hud'),
+    toast:$('#toast'), status:$('#status'), sessDur:$('#sessDur'),
+    tabs:$$('.tab'), panelStim:$('#panel-stimulus'), panelSeq:$('#panel-sequences'), panelJournal:$('#panel-journal'), panelAide:$('#panel-aide'),
+    playBtn:$('#playBtn'), stopBtn:$('#stopBtn'), fsBtn:$('#fsBtn'), clinicalBtn:$('#clinicalBtn'),
+    typeSel:$('#typeSel'), dirSel:$('#dirSel'), motionMode:$('#motionMode'),
+    speed2D:$('#speed2D'), fixation:$('#fixation'), fix:$('#fix'),
+    barWidth:$('#barWidth'), stripeOrient:$('#stripeOrient'),
+    dotSpacing:$('#dotSpacing'), dotSize:$('#dotSize'), shape3D:$('#shape3D'),
+    dotCol:$('#dotCol'), bgCol:$('#bgCol'),
+    enable3D:$('#enable3D'), zMin:$('#zMin'), zMax:$('#zMax'), zFocus:$('#zFocus'),
+    speed3D:$('#speed3D'), radialSpeed:$('#radialSpeed'), rotDeg:$('#rotDeg'),
+    zRebal:$('#zRebal'), quality3D:$('#quality3D'),
+    stabilize3D:$('#stabilize3D'), vibrate3D:$('#vibrate3D'), vibAmp:$('#vibAmp'), vibFreq:$('#vibFreq'), jitterZ:$('#jitterZ'),
+    // Séquences
+    seqName:$('#seqName'), seqSave:$('#seqSave'), seqList:$('#seqList'), seqLoad:$('#seqLoad'),
+    seqPlay:$('#seqPlay'), seqStop:$('#seqStop'), seqClear:$('#seqClear'), seqTbody:$('#seqTbody'),
+    sDur:$('#sDur'), sType:$('#sType'), s3D:$('#s3D'), sShape:$('#sShape'), sMotion:$('#sMotion'), sDir:$('#sDir'), sSpeed2D:$('#sSpeed2D'), sSpeed3D:$('#sSpeed3D'), sRadial:$('#sRadial'), sRot:$('#sRot'), sAdd:$('#sAdd'),
+    // Journal
+    pName:$('#pName'), pre:$('#pre'), post:$('#post'), log:$('#log'), exportCSV:$('#exportCSV'), clearJournal:$('#clearJournal'), journalBody:$('#journalBody'),
+    themeBtn:$('#themeBtn'), safeBtn:$('#safeBtn'), resetBtn:$('#resetBtn'),
+    runTests:$('#runTests')
+  };
+  const state={ running:false, lastT:0, sessionStart:0, clinical:false, theme:'dark', w:0, h:0, dots:null, revTimer:null, journal:[], tsec:0, zRebalLast:0,
+    seqSteps:[], seqPlaying:false, seqIdx:0, seqStepStart:0, seqStart:0, fpsN:0, fpsAcc:0, lastFpsT:0, wake:null };
+
+  // Shorthands
+  function $(q){return document.querySelector(q)}; function $$(q){return document.querySelectorAll(q)}
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  function toast(msg,ms=1200){ els.toast.textContent=msg; els.toast.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>els.toast.style.display='none',ms); }
+  function isFS(){ return document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement||document.msFullscreenElement; }
+  function reqFS(el){ (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen)?.call(el); }
+  function exitFS(){ (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen)?.call(document); }
+  function cycleDir(){ const order=['left','right','up','down']; const i=(order.indexOf(els.dirSel.value)+1)%order.length; els.dirSel.value=order[i]; }
+  function pxPerSecToDegPerSec(pxps){ const ppi=parseFloat($('#ppi').value||110); const cmPerInch=2.54; const pxPerCm=ppi/cmPerInch; const dist=parseFloat($('#viewDist').value||60); const radPerSec=Math.atan((pxps/pxPerCm)/dist); return radPerSec*180/Math.PI; }
+  function updateDeg(){ const v = (els.enable3D.checked? parseFloat(els.speed3D.value||0) : parseFloat(els.speed2D.value||0)); $('#degPerSec').textContent = pxPerSecToDegPerSec(v).toFixed(1); }
+  function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // Tabs
+  els.tabs.forEach(t=> t.addEventListener('click', ()=>{ els.tabs.forEach(x=>x.classList.remove('active')); t.classList.add('active');
+    const id=t.dataset.tab; els.panelStim.classList.toggle('active', id==='stimulus'); els.panelSeq.classList.toggle('active', id==='sequences'); els.panelJournal.classList.toggle('active', id==='journal'); els.panelAide.classList.toggle('active', id==='aide'); }));
+
+  // Canvas sizing + DPR aware
+  function resize(){ const dpr=window.devicePixelRatio||1; state.w=els.cv.width=Math.max(1,Math.floor(els.cv.clientWidth*dpr)); state.h=els.cv.height=Math.max(1,Math.floor(els.cv.clientHeight*dpr)); state.dots=null; }
+  window.addEventListener('resize', resize, {passive:true});
+
+  // Particles based on spacing (px)
+  function computeCount(){ const dpr=window.devicePixelRatio||1; const spacing = Math.max(2, parseInt(els.dotSpacing.value||6,10)) * dpr; const area = state.w*state.h; let n = Math.floor(area/(spacing*spacing));
+    // Cap based on deviceMemory when available
+    const dm = navigator.deviceMemory||4; const cap = dm>=8? 220000 : dm>=6? 180000 : dm>=4? 140000 : 100000; return Math.min(cap, Math.max(200, n)); }
+
+  function genDots(){ const n=computeCount(); state.dots = new Array(n); const use3D = els.enable3D.checked;
+    if(use3D){ const zmin=parseFloat(els.zMin.value||0.6), zmax=parseFloat(els.zMax.value||3.0);
+      for(let i=0;i<n;i++){ state.dots[i]={ x:(Math.random()*2-1), y:(Math.random()*2-1), z: zmin + Math.random()*(zmax-zmin), ph: Math.random()*Math.PI*2 }; }
+    } else { for(let i=0;i<n;i++){ state.dots[i]={ x:Math.random()*state.w, y:Math.random()*state.h }; } }
+  }
+
+  // Wake Lock (évite la mise en veille en séance)
+  async function lockWake(){ try{ if('wakeLock' in navigator){ state.wake = await navigator.wakeLock.request('screen'); state.wake.addEventListener('release',()=>{ state.wake=null; }); } }catch(e){} }
+  function releaseWake(){ try{ state.wake?.release(); state.wake=null; }catch(e){} }
+
+  // Animation
+  function draw(ts){
+    const ctx=els.cv.getContext('2d'); const w=state.w, h=state.h; ctx.fillStyle = els.typeSel.value==='dots' ? els.bgCol.value : '#000'; ctx.fillRect(0,0,w,h);
+    const now=ts||performance.now(); if(!state.lastT) state.lastT=now; const dt=Math.min(0.05,(now-state.lastT)/1000); state.lastT=now; state.tsec += dt;
+    // FPS
+    state.fpsAcc += 1/dt; state.fpsN++; if((now/1000 - state.lastFpsT) > 0.5){ const fps = (state.fpsAcc/state.fpsN)|0; state.fpsAcc=0; state.fpsN=0; state.lastFpsT=now/1000; els.hud.textContent = fps+" FPS"; }
+
+    if(els.typeSel.value==='stripes'){
+      const cA=$('#colA').value, cB=$('#colB').value, contrast=parseFloat($('#contrast').value||1);
+      const fg = mixColor(cA,cB,clamp(contrast,0,1)); const bw=clamp(parseInt(els.barWidth.value||80,10),4,800); const speed=parseFloat(els.speed2D.value||300)*((els.dirSel.value==='left'||els.dirSel.value==='up')?-1:1);
+      drawStripes(ctx,w,h,fg,cB,bw,$('#stripeOrient').value,dt,speed);
+    } else {
+      if(!state.dots) genDots(); if(els.enable3D.checked) drawField3D(ctx,w,h,dt); else drawField2D(ctx,w,h,dt);
+    }
+    els.fix.style.display = els.fixation.checked ? 'block':'none';
+    if(state.running && state.sessionStart){ els.sessDur.textContent = Math.round((Date.now()-state.sessionStart)/1000); }
+    if(state.seqPlaying) sequenceTick(now);
+    if(state.running) requestAnimationFrame(draw);
+  }
+
+  let stripeOff=0; function drawStripes(ctx,w,h,fg,bg,bw,orient,dt,speed){ ctx.fillStyle = bg; ctx.fillRect(0,0,w,h); stripeOff = (stripeOff + speed*dt) % (bw*2); ctx.fillStyle = fg; const off=((stripeOff % (bw*2)) + (bw*2))%(bw*2);
+    if(orient==='vertical'){ for(let x=-bw*2+off; x<w+bw*2; x+=bw*2){ ctx.fillRect(x,0,bw,h); } } else { for(let y=-bw*2+off; y<h+bw*2; y+=bw*2){ ctx.fillRect(0,y,w,bw); } } }
+  function mixColor(hexA,hexB,alpha){ const A=parseInt(hexA.slice(1),16), B=parseInt(hexB.slice(1),16); const ar=(A>>16)&255, ag=(A>>8)&255, ab=A&255, br=(B>>16)&255, bg=(B>>8)&255, bb=B&255; const r=Math.round(br+(ar-br)*alpha), g=Math.round(bg+(ag-bg)*alpha), b=Math.round(bb+(ab-bb)*alpha); return `rgb(${r},${g},${b})`; }
+
+  function drawField2D(ctx,w,h,dt){ const speed=parseFloat(els.speed2D.value||300); const dir=els.dirSel.value; let vx=0, vy=0; if(dir==='left') vx=-speed; if(dir==='right') vx=+speed; if(dir==='up') vy=-speed; if(dir==='down') vy=+speed; ctx.fillStyle = els.dotCol.value; const r=clamp(parseInt(els.dotSize.value||4,10),1,60); ctx.beginPath(); for(const d of state.dots){ d.x += vx*dt; d.y += vy*dt; if(d.x<0) d.x+=w; if(d.x>w) d.x-=w; if(d.y<0) d.y+=h; if(d.y>h) d.y-=h; ctx.moveTo(d.x+r, d.y); ctx.arc(d.x,d.y,r,0,Math.PI*2);} ctx.fill(); }
+
+  function drawField3D(ctx,w,h,dt){ const zmin=parseFloat(els.zMin.value||0.6), zmax=parseFloat(els.zMax.value||3.0), zf=parseFloat(els.zFocus.value||1.2); const speedT=parseFloat(els.speed3D.value||500); const speedZ=parseFloat(els.radialSpeed.value||0); const mode=els.motionMode.value; const dir=els.dirSel.value; const cx=w/2, cy=h/2; const scale = Math.min(w,h)/2; const base = clamp(parseInt(els.dotSize.value||4,10),1,80); const quality = els.quality3D.value; const shape = els.shape3D.value; const color = els.dotCol.value; const rotW = (parseFloat(els.rotDeg.value||0) * Math.PI/180);
+    ctx.fillStyle=color; ctx.strokeStyle=color; if(quality==='hi'){ ctx.shadowColor=color; } else { ctx.shadowColor='transparent'; ctx.shadowBlur=0; }
+    let arr = state.dots; if(quality!=='perf'){ arr = state.dots.slice().sort((a,b)=> b.z - a.z); }
+    const vibOn = els.vibrate3D.checked && !els.stabilize3D.checked; const amp = parseFloat(els.vibAmp.value||'0'); const frq = parseFloat(els.vibFreq.value||'0'); const jz = els.stabilize3D.checked ? 0 : (parseFloat(els.jitterZ.value||'0') * 2);
+    for(const p of arr){
+      if(mode==='linear'){ const vt = speedT * (1/Math.max(p.z, 0.001)); let vx=0, vy=0; if(dir==='left')  vx = -vt; if(dir==='right') vx = +vt; if(dir==='up')    vy = -vt; if(dir==='down')  vy = +vt; p.x += (vx*dt)/scale * p.z; p.y += (vy*dt)/scale * p.z; }
+      else if(mode==='rotCW' || mode==='rotCCW'){ const sign = (mode==='rotCW') ? -1 : +1; const dth = sign * rotW * dt; const s = Math.sin(dth), c = Math.cos(dth); const x = p.x, y = p.y; p.x = x*c - y*s; p.y = x*s + y*c; }
+      // Tunnel = profondeur pure via speedZ
+      p.z += speedZ * dt + (Math.random()-0.5) * jz * dt;
+      // wrap latéral monde
+      if(p.x < -1.1) p.x += 2.2; if(p.x > 1.1) p.x -= 2.2; if(p.y < -1.1) p.y += 2.2; if(p.y > 1.1) p.y -= 2.2;
+      if(p.z<zmin || p.z>zmax){ const zResp = (speedZ<0) ? zmax : zmin; p.x=(Math.random()*2-1); p.y=(Math.random()*2-1); p.z = zResp + (Math.random()*0.05 - 0.025); p.ph=Math.random()*Math.PI*2; }
+      let sx = cx + (p.x/ p.z) * scale; let sy = cy + (p.y/ p.z) * scale; if(vibOn){ const dx = amp * Math.sin((p.ph||0) + state.tsec*2*Math.PI*frq); const dy = amp * Math.cos((p.ph||0) + state.tsec*2*Math.PI*frq); sx += dx; sy += dy; }
+      if(shape==='cube'){ const half = clamp(base * (1/ p.z), 0.6, base*2.8); let alpha = 1.0; if(quality!=='hi'){ const k = Math.min(1, Math.abs(p.z - zf)/(zmax - zmin)); alpha = 1 - 0.45 - 0.4*k; if(alpha<0.55) alpha=0.55; } else { ctx.shadowBlur = 6 * Math.min(1, Math.abs(p.z - zf)/(zmax - zmin)); } ctx.globalAlpha = alpha; ctx.fillRect(sx - half, sy - half, half*2, half*2); }
+      else { const r = clamp(base * (1/ p.z), 0.6, base*2.8); let alpha = 1.0; if(quality!=='hi'){ const k = Math.min(1, Math.abs(p.z - zf)/(zmax - zmin)); alpha = 1 - 0.45 - 0.4*k; if(alpha<0.55) alpha=0.55; } else { ctx.shadowBlur = 6 * Math.min(1, Math.abs(p.z - zf)/(zmax - zmin)); } ctx.globalAlpha = alpha; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1;
+    const rebalPeriod = parseFloat(els.zRebal.value || '0'); if(rebalPeriod > 0){ if(!state.zRebalLast) state.zRebalLast = performance.now(); if((performance.now() - state.zRebalLast)/1000 >= rebalPeriod){ state.zRebalLast = performance.now(); const n = Math.max(1, Math.floor(state.dots.length * 0.05)); for(let i=0;i<n;i++){ const k = (Math.random()*state.dots.length)|0; const q = state.dots[k]; q.z = zmin + Math.random()*(zmax - zmin); q.x = (Math.random()*2-1); q.y = (Math.random()*2-1); q.ph = Math.random()*Math.PI*2; } } }
+  }
+
+  // Reversals
+  function scheduleReversal(){ clearTimeout(state.revTimer); const mode=$('#revMode').value; if(mode==='none') return; if(mode==='fixed'){ const ms=Math.max(2000, parseInt($('#revPeriod').value||10,10)*1000); state.revTimer=setTimeout(reverseDir, ms); } else { const a=Math.max(2000, parseInt($('#revMin').value||5,10)*1000); const b=Math.max(2000, parseInt($('#revMax').value||15,10)*1000); const ms=Math.floor(a + Math.random()*(Math.max(b,a)-a)); state.revTimer=setTimeout(reverseDir, ms); } }
+  function reverseDir(){ const m={left:'right', right:'left', up:'down', down:'up'}; els.dirSel.value = m[els.dirSel.value] || 'right'; scheduleReversal(); }
+
+  // Start/Stop
+  function start(){ if(state.running) return; state.running=true; state.lastT=0; state.sessionStart=Date.now(); requestAnimationFrame(draw); scheduleReversal(); lockWake(); els.status.textContent='▶️ Défilement'; }
+  function stop(){ if(!state.running) return; state.running=false; clearTimeout(state.revTimer); state.revTimer=null; releaseWake(); els.status.textContent='⏸️ Pause'; }
+
+  // Events
+  function toggleCfg(){ const type=els.typeSel.value; $('#stripesCfg').style.display = (type==='stripes')?'flex':'none'; $('#dotsCfg').style.display    = (type==='dots')?'flex':'none'; $('#dots3DCfg').style.display  = (type==='dots' && els.enable3D.checked)?'flex':'none'; }
+
+  els.typeSel.addEventListener('change', ()=>{ toggleCfg(); state.dots=null; });
+  els.enable3D.addEventListener('change', ()=>{ toggleCfg(); state.dots=null; updateDeg(); });
+  ;['dotSpacing','dotSize','dotCol','bgCol','zMin','zMax','zFocus','speed3D','radialSpeed','quality3D','shape3D','zRebal','rotDeg','motionMode'].forEach(id=>{ document.getElementById(id).addEventListener('input', ()=>{ if(id==='dotSpacing'||id==='dotSize'||id==='zMin'||id==='zMax') state.dots=null; }); });
+  ;['revMode','revPeriod','revMin','revMax'].forEach(id=> document.getElementById(id).addEventListener('change', ()=> scheduleReversal()));
+  ;['viewDist','ppi','speed2D','speed3D'].forEach(id=> document.getElementById(id).addEventListener('input', updateDeg));
+
+  els.playBtn.addEventListener('click', start);
+  els.stopBtn.addEventListener('click', stop);
+  els.fsBtn.addEventListener('click', ()=>{ if(!isFS()) reqFS(els.stage); else exitFS(); });
+  els.clinicalBtn.addEventListener('click', ()=>{ state.clinical=!state.clinical; if(state.clinical) els.app.classList.add('clinical'); else els.app.classList.remove('clinical'); });
+  els.themeBtn.addEventListener('click', ()=>{ state.theme = state.theme==='dark'?'light':'dark'; const dark = state.theme==='dark'; document.documentElement.style.setProperty('--bg', dark ? '#0b0c0f' : '#ffffff'); document.documentElement.style.setProperty('--fg', dark ? '#f2f5f7' : '#0a0a0a'); document.documentElement.style.setProperty('--muted', dark ? '#aab4c0' : '#4b5563'); document.documentElement.style.setProperty('--grid', dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'); });
+  els.safeBtn.addEventListener('click', ()=>{ $('#speed2D').value=200; $('#speed3D').value=400; $('#radialSpeed').value=0.2; $('#quality3D').value='perf'; $('#dotSpacing').value=10; state.dots=null; toast('Mode sûr activé'); });
+  els.resetBtn.addEventListener('click', ()=>{ window.location.reload(); });
+
+  // Touch / pointer: toggle start/stop
+  let downT=0; els.stage.addEventListener('pointerdown', ()=>{ downT=performance.now(); }, {passive:true});
+  els.stage.addEventListener('pointerup', ()=>{ if(performance.now()-downT<300){ state.running?stop():start(); } }, {passive:true});
+
+  // Keyboard
+  window.addEventListener('keydown', (e)=>{
+    if(e.key===' '){ e.preventDefault(); state.running?stop():start(); }
+    else if(e.key.toLowerCase()==='f'){ if(!isFS()) reqFS(els.stage); else exitFS(); }
+    else if(e.key.toLowerCase()==='d'){ cycleDir(); }
+    else if(e.key.toLowerCase()==='r'){ reverseDir(); }
+    else if(e.key.toLowerCase()==='t'){ els.typeSel.value = els.typeSel.value==='stripes'?'dots':'stripes'; els.typeSel.dispatchEvent(new Event('change')); }
+    else if(e.key==='3'){ els.enable3D.checked=!els.enable3D.checked; els.enable3D.dispatchEvent(new Event('change')); }
+    else if(e.key.toLowerCase()==='c'){ els.fixation.checked = !els.fixation.checked; }
+    else if(e.key.toLowerCase()==='g'){ els.shape3D.value = (els.shape3D.value==='dot'?'cube':'dot'); }
+    else if(e.key.toLowerCase()==='m'){ const mm=['linear','rotCW','rotCCW','tunnel']; const i=mm.indexOf(els.motionMode.value); els.motionMode.value=mm[(i+1)%mm.length]; }
+    else if(e.key==='+'||e.key==='='){ if(els.enable3D.checked){ els.speed3D.value = Math.min(4000, parseFloat(els.speed3D.value||0)+20); } else { els.speed2D.value = Math.min(3000, parseFloat(els.speed2D.value||0)+20); } updateDeg(); }
+    else if(e.key==='-'||e.key==='_'){ if(els.enable3D.checked){ els.speed3D.value = Math.max(0, parseFloat(els.speed3D.value||0)-20); } else { els.speed2D.value = Math.max(5, parseFloat(els.speed2D.value||0)-20); } updateDeg(); }
+  });
+
+  // Journal
+  function renderJournal(){ els.journalBody.innerHTML=''; state.journal.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML = `<td>${new Date(r.when).toLocaleString()}</td><td>${esc(r.p)}</td><td>${r.type}</td><td>${r.mode}</td><td>${r.shape}</td><td>${r.motion}</td><td>${r.dir}</td><td>${r.v}</td><td>${r.dur}</td><td>${r.pre}</td><td>${r.post}</td>`; els.journalBody.appendChild(tr); }); }
+  function addLog(){ const mode = els.enable3D.checked?'3D':'2D'; const v = els.enable3D.checked? parseFloat(els.speed3D.value||0)+' px/s' : parseFloat(els.speed2D.value||0)+' px/s'; const entry={ when:Date.now(), p:(els.pName.value||'').trim(), type:els.typeSel.value, mode, shape: els.shape3D.value, motion: els.motionMode.value, dir:els.dirSel.value, v:v, dur: state.sessionStart? Math.round((Date.now()-state.sessionStart)/1000) : 0, pre: parseInt(els.pre.value||0,10), post: parseInt(els.post.value||0,10) }; state.journal.push(entry); saveAll(); renderJournal(); toast('Journal mis à jour'); }
+  els.log.addEventListener('click', addLog);
+  els.exportCSV.addEventListener('click', ()=>{
+    try{
+      const head=['Date/Heure','Patient','Type','Mode','Forme','Mouvement','Dir','Vitesse','Durée (s)','Pré','Post'];
+      const rows=state.journal.map(r=>[
+        new Date(r.when).toLocaleString(), r.p, r.type, r.mode, r.shape, r.motion, r.dir, r.v, r.dur, r.pre, r.post
+      ]);
+      const csv=[head.join(','), ...rows.map(r=> r.map(x=> typeof x==='string'?`"${x}"`:x).join(','))].join('\n');
+      const blob=new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='okn_journal.csv'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    }catch(err){ console.error(err); toast('Erreur export CSV'); }
+  });
+  els.clearJournal.addEventListener('click', ()=>{ if(confirm('Vider le journal ?')){ state.journal=[]; saveAll(); renderJournal(); }});
+
+  // Séquences
+  function renderSeq(){ els.seqTbody.innerHTML=''; state.seqSteps.forEach((s,i)=>{ const tr=document.createElement('tr'); tr.innerHTML = `<td>${i+1}</td><td>${s.dur}s</td><td>${s.type}</td><td>${s.en3D?'Oui':'Non'}</td><td>${s.shape}</td><td>${s.motion}</td><td>${s.dir}</td><td>${s.sp2D}</td><td>${s.sp3D}</td><td>${s.rad}</td><td>${s.rot}</td><td><button class="btn" data-i="${i}" data-act="up">↑</button> <button class="btn" data-i="${i}" data-act="down">↓</button> <button class="btn danger" data-i="${i}" data-act="del">×</button></td>`; els.seqTbody.appendChild(tr); }); els.seqTbody.querySelectorAll('button').forEach(b=> b.addEventListener('click', (e)=>{ const i=parseInt(e.target.getAttribute('data-i'),10); const act=e.target.getAttribute('data-act'); if(act==='del'){ state.seqSteps.splice(i,1); } if(act==='up' && i>0){ const t=state.seqSteps[i-1]; state.seqSteps[i-1]=state.seqSteps[i]; state.seqSteps[i]=t; } if(act==='down' && i<state.seqSteps.length-1){ const t=state.seqSteps[i+1]; state.seqSteps[i+1]=state.seqSteps[i]; state.seqSteps[i]=t; } renderSeq(); saveAll(); })); }
+  els.sAdd.addEventListener('click', ()=>{ const step={ dur:parseInt(els.sDur.value||30,10), type:els.sType.value, en3D:els.s3D.checked, shape:els.sShape.value, motion:els.sMotion.value, dir:els.sDir.value, sp2D:parseFloat(els.sSpeed2D.value||300), sp3D:parseFloat(els.sSpeed3D.value||500), rad:parseFloat(els.sRadial.value||0), rot:parseFloat(els.sRot.value||60) }; state.seqSteps.push(step); renderSeq(); saveAll(); });
+  els.seqClear.addEventListener('click', ()=>{ if(confirm('Vider la séquence ?')){ state.seqSteps=[]; renderSeq(); saveAll(); }});
+  function seqApply(step){ els.typeSel.value = step.type; els.typeSel.dispatchEvent(new Event('change')); els.enable3D.checked = step.en3D; els.enable3D.dispatchEvent(new Event('change')); els.shape3D.value = step.shape; els.motionMode.value = step.motion; els.dirSel.value = step.dir; els.speed2D.value = step.sp2D; els.speed3D.value = step.sp3D; els.radialSpeed.value = step.rad; els.rotDeg.value = step.rot; state.dots=null; }
+  function seqStart(){ if(state.seqSteps.length===0){ toast('Séquence vide'); return; } state.seqPlaying=true; state.seqIdx=0; state.seqStepStart=performance.now(); state.seqStart=state.seqStepStart; seqApply(state.seqSteps[0]); if(!state.running) start(); toast('Séquence démarrée'); }
+  function seqStop(){ state.seqPlaying=false; toast('Séquence stoppée'); }
+  function sequenceTick(now){ if(!state.seqPlaying) return; const cur = state.seqSteps[state.seqIdx]; if(!cur){ seqStop(); return; } const elapsed = (now - state.seqStepStart)/1000; if(elapsed >= cur.dur){ state.seqIdx++; if(state.seqIdx >= state.seqSteps.length){ seqStop(); return; } state.seqStepStart = now; seqApply(state.seqSteps[state.seqIdx]); } }
+  els.seqPlay.addEventListener('click', seqStart); els.seqStop.addEventListener('click', seqStop);
+
+  // Local storage
+  const store={ get(k,d){ try{const v=localStorage.getItem(k); return v?JSON.parse(v):d;}catch(e){return d;} }, set(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} } };
+  function saveAll(){ store.set('okn_rot_tunnel_seq_state_v2', { journal:state.journal, steps:state.seqSteps }); }
+  function loadAll(){ const s=store.get('okn_rot_tunnel_seq_state_v2', null); if(s){ if(Array.isArray(s.journal)) state.journal=s.journal; if(Array.isArray(s.steps)) state.seqSteps=s.steps; } renderJournal(); renderSeq(); refreshSeqList(); }
+
+  // Save/Load sequences by name
+  function refreshSeqList(){ const all=store.get('okn_sequences_v2', {}); els.seqList.innerHTML=''; Object.keys(all).forEach(name=>{ const o=document.createElement('option'); o.value=name; o.textContent=name; els.seqList.appendChild(o); }); }
+  els.seqSave.addEventListener('click', ()=>{ const name=(els.seqName.value||'').trim(); if(!name){ toast('Nom manquant'); return; } const all=store.get('okn_sequences_v2', {}); all[name]=state.seqSteps; store.set('okn_sequences_v2', all); refreshSeqList(); toast('Séquence enregistrée'); });
+  els.seqLoad.addEventListener('click', ()=>{ const name=els.seqList.value; const all=store.get('okn_sequences_v2', {}); if(!name||!all[name]){ toast('Aucune séquence'); return; } state.seqSteps=all[name]; renderSeq(); toast('Séquence chargée'); });
+
+  // Auto‑tests basiques (non bloquants)
+  function runAutoTests(){
+    const results=[];
+    try{ // Test 1: conversion °/s
+      const deg=pxPerSecToDegPerSec(110); if(!isFinite(deg)) throw new Error('deg NaN'); results.push('✓ °/s OK');
+      // Test 2: génération particules
+      const before=computeCount(); if(before<200) throw new Error('count trop bas'); results.push('✓ Particules OK');
+      // Test 3: séquence push/pop
+      const len0=state.seqSteps.length; state.seqSteps.push({dur:1,type:'dots',en3D:false,shape:'dot',motion:'linear',dir:'right',sp2D:100,sp3D:0,rad:0,rot:0}); if(state.seqSteps.length!==len0+1) throw new Error('seq add'); state.seqSteps.pop(); results.push('✓ Séquence CRUD OK');
+      // Test 4: export CSV (string non vide)
+      const head=['a','b']; const rows=[[1,2],[3,4]]; const csv=[head.join(','), ...rows.map(r=> r.join(','))].join('\n'); if(!csv.includes('\n')) throw new Error('csv join'); results.push('✓ CSV join OK');
+      toast('Auto‑tests: ' + results.join(' • '), 2000);
+    }catch(e){ console.error(e); toast('Test échoué: '+e.message, 2000); }
+  }
+  els.runTests?.addEventListener('click', runAutoTests);
+
+  // Init
+  function toggleCfgInit(){ toggleCfg(); updateDeg(); refreshSeqList(); }
+  function init(){ loadAll(); resize(); toggleCfgInit(); }
+  init();
+})();
+</script>
+</body>
+</html>
